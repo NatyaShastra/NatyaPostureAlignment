@@ -1,0 +1,28 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# Environment Variables (Keep your secrets local!)
+.env
+.env.local
+
+# Hugging Face downloads & caches
+.huggingface/
+
+# Large Model / Checkpoint Files (Already downloaded locally)
+*.task
+*.pt
+*.pth
+checkpoints/
+
+# Operating System Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
