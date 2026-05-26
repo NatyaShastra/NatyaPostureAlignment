@@ -45,7 +45,7 @@ MEDIAPIPE_URL = (
     "pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task"
 )
 
-MAX_VIDEO_BYTES = 50 * 1024 * 1024   # 50 MB hard cap on uploads
+MAX_VIDEO_BYTES = 100 * 1024 * 1024   # 100 MB hard cap on uploads
 
 
 def _download_checkpoints() -> None:
@@ -157,7 +157,7 @@ async def analyse(video: UploadFile = File(...)):
     if len(data) > MAX_VIDEO_BYTES:
         raise HTTPException(
             status_code=413,
-            detail=f"Video too large ({len(data) // 1024 // 1024} MB). Maximum is 50 MB.",
+            detail=f"Video too large ({len(data) // 1024 // 1024} MB). Maximum is 100 MB.",
         )
 
     # Write to temp file (MediaPipe needs a file path, not bytes)
