@@ -45,7 +45,7 @@ export default function UploadZone({ onFile, disabled }: Props) {
 
       <p className="font-display text-xl text-ivory mb-2">Drop a video here</p>
       <p className="font-body text-ink-light text-base" style={{color:'var(--ivory-dark)', opacity:0.7}}>
-        or click to browse — MP4, MOV, AVI · max 50 MB
+        or click to browse — MP4, MOV, AVI · max 100 MB
       </p>
 
       <input
