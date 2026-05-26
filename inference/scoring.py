@@ -33,11 +33,11 @@ REGION_WEIGHTS: dict[str, float] = {
 
 # (min_score, grade_label, message)
 GRADE_BANDS: list[tuple[float, str, str]] = [
-    (90.0, "A", "Excellent — your form is very close to reference. Maintain this quality."),
-    (75.0, "B", "Good — strong execution overall. Focus on the flagged joints to advance."),
-    (DEFAULT_PASS_THRESHOLD, "C", "Passing — you've cleared the threshold but there is clear room to improve."),
-    (55.0, "D", "Needs work — more practice before progressing. See corrections below."),
-    (0.0,  "F", "Retry — focus on the fundamentals and revisit this adavu."),
+    (90.0, "A", "Excellent - your form is very close to reference. Maintain this quality."),
+    (75.0, "B", "Good - strong execution overall. Focus on the flagged joints to advance."),
+    (DEFAULT_PASS_THRESHOLD, "C", "Passing - you have cleared the threshold but there is clear room to improve."),
+    (55.0, "D", "Needs work - more practice before progressing. See corrections below."),
+    (0.0,  "F", "Retry - focus on the fundamentals and revisit this adavu."),
 ]
 
 

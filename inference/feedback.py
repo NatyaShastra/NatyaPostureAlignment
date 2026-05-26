@@ -366,7 +366,7 @@ def call_groq(prompt: str, max_tokens: int = 400) -> str | None:
         return None
     try:
         response = _groq_client.chat.completions.create(
-            model="qwen/qwen3-32b",
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
             max_tokens=max_tokens,
             messages=[
                 {
