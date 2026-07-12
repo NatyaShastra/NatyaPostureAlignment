@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --saffron:       #E8621A;
+  --saffron-light: #F4894E;
+  --gold:          #C8952A;
+  --gold-light:    #E8B84B;
+  --crimson:       #8B1A2F;
+  --crimson-light: #B8243F;
+  --ivory:         #FAF3E8;
+  --ivory-dark:    #EDE0C8;
+  --ink:           #1C1108;
+  --ink-mid:       #3D2B14;
+  --ink-light:     #6B4C2A;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background-color: var(--ink);
+  color: var(--ivory);
+  font-family: var(--font-body), Georgia, serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Decorative mandala pattern overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 15% 20%, rgba(232,98,26,0.06) 0%, transparent 50%),
+    radial-gradient(circle at 85% 80%, rgba(139,26,47,0.08) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(200,149,42,0.04) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Subtle noise texture */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.4;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display), Georgia, serif;
+}
+
+/* Decorative divider */
+.divider-kolam {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  color: var(--gold);
+  opacity: 0.5;
+}
+.divider-kolam::before,
+.divider-kolam::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+
+/* Score bar fill animation */
+@keyframes fillBar {
+  from { width: 0% }
+  to   { width: var(--target-width) }
+}
+.score-bar-fill {
+  animation: fillBar 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation-delay: 0.3s;
+  width: 0%;
+}
+
+/* Upload zone */
+.upload-zone {
+  border: 2px dashed rgba(200,149,42,0.4);
+  transition: all 0.3s ease;
+}
+.upload-zone:hover,
+.upload-zone.drag-over {
+  border-color: var(--saffron);
+  background: rgba(232,98,26,0.06);
+}
+
+/* Card base */
+.card {
+  background: rgba(61,43,20,0.5);
+  border: 1px solid rgba(200,149,42,0.15);
+  backdrop-filter: blur(8px);
+}
+
+/* Grade badge */
+.grade-badge {
+  font-family: var(--font-display);
+  font-size: 2.5rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar       { width: 6px; }
+::-webkit-scrollbar-track { background: var(--ink-mid); }
+::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 3px; }
+
+/* Animations */
+.animate-fade-up {
+  opacity: 0;
+  animation: fadeUp 0.6s ease forwards;
+}
+@keyframes fadeUp {
+  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(16px); }
+}
+
+.delay-100 { animation-delay: 0.1s; }
+.delay-200 { animation-delay: 0.2s; }
+.delay-300 { animation-delay: 0.3s; }
+.delay-400 { animation-delay: 0.4s; }
+.delay-500 { animation-delay: 0.5s; }
