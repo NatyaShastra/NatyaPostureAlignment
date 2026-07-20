@@ -23,12 +23,17 @@ import torch
 import torch.nn.functional as F
 
 from models.classifier import AdavuClassifier
-from .pose     import get_pose_landmarker, extract_landmarks_from_video, build_feature_vector
+from .pose     import (
+    get_pose_landmarker,
+    extract_landmarks_from_video,
+    build_feature_vector,
+    extract_mid_frame_rgb,
+    normalise_landmarks,
+)
 from .angles   import build_angle_refs, compute_angles_from_sequence, detect_mistakes
 from .scoring  import compute_score
 from .feedback import init_groq_client, get_llm_feedback
 from .overlay  import save_overlay_image, overlay_to_base64, draw_skeleton_overlay
-from .pose     import extract_mid_frame_rgb
 
 # ---------------------------------------------------------------------------
 # Module-level model state (populated by load_model_and_refs)
@@ -54,36 +59,10 @@ def load_model_and_refs(
     """
     Load all inference dependencies. Call once at application startup.
 
-    - Loads the MLP checkpoint (model weights + label encoder + normalisation stats)
-    - Builds per-class angle reference distributions from the feature cache
-    - Initialises the MediaPipe PoseLandmarker singleton
-    - Initialises the Groq client if an API key is provided
-    """
-    global _model, _le, _X_mean, _X_std, _device
-
-    # --- Model checkpoint -------------------------------------------------
-    if not os.path.exists(checkpoint_path):
-        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
-
-    _device = "cuda" if torch.cuda.is_available() else "cpu"
-    ckpt    = torch.load(checkpoint_path, map_location=_device, weights_only=False)
-
-    _le     = ckpt["label_encoder"]
-    _X_mean = ckpt["X_mean"]
-    _X_std  = ckpt["X_std"]
-    num_classes = ckpt["num_classes"]
-    input_dim   = ckpt["feature_dim"]
-
-    _model = AdavuClassifier(input_dim=input_dim, num_classes=num_classes).to(_device)
-    _model.load_state_dict(ckpt["model_state"])
-    _model.eval()
-
-    print(f"[startup] Model loaded — {num_classes} classes on {_device}")
-
     # --- Feature cache → angle reference distributions --------------------
     if not os.path.exists(features_cache):
         raise FileNotFoundError(f"Feature cache not found: {features_cache}")
-
+        
     data = np.load(features_cache, allow_pickle=True)
     build_angle_refs(data["X"], data["y"])
     print(f"[startup] Angle refs built from {len(data['X'])} cached samples")
@@ -106,6 +85,7 @@ def load_model_and_refs(
 
 def run_coach_v2(
     video_path:      str,
+    target_adavu:    str  = "Thattadavu",
     num_frames:      int  = 30,
     top_k:           int  = 3,
     return_overlay:  bool = True,
@@ -113,45 +93,21 @@ def run_coach_v2(
 ) -> dict:
     """
     Full Dance Coach pipeline: pose → classify → angle analysis → score → feedback → overlay.
-
-    Args:
-        video_path:      Path to .mp4 / .mov / .avi
-        num_frames:      Frames sampled for pose extraction (default 30)
-        top_k:           Number of candidate classes in output
-        return_overlay:  If True, generate skeleton overlay and include as base64
-        overlay_out_dir: Directory to write the overlay JPEG
-
-    Returns dict matching the API contract:
-        adavu_class, confidence, top_k_predictions,
-        overall_score, region_scores, passed, grade, grade_message,
-        pass_threshold, needed_to_pass,
-        flagged_joints, coaching_feedback, feedback_source,
-        overlay_image_b64 (or None)
     """
-    if _model is None:
-        raise RuntimeError("Call load_model_and_refs() before run_coach_v2()")
-
     # --- Step 1: Pose extraction ------------------------------------------
     seq = extract_landmarks_from_video(video_path, num_frames)
     if seq is None:
         return {"error": "Could not extract pose from video. Check that the video contains a visible person."}
 
-    # --- Step 2: MLP classification ---------------------------------------
-    fv      = build_feature_vector(seq)
-    fv_norm = (fv - _X_mean) / (_X_std + 1e-8)
-    fv_t    = torch.FloatTensor(fv_norm).unsqueeze(0).to(_device)
-
-    with torch.no_grad():
-        probs = F.softmax(_model(fv_t), dim=1).cpu().numpy()[0]
-
-    top_idx   = probs.argsort()[::-1][:top_k]
-    top_preds = [(_le.inverse_transform([i])[0], round(float(probs[i]), 4)) for i in top_idx]
-
-    adavu_class = top_preds[0][0]
-    confidence  = top_preds[0][1]
+    # --- Step 2: Skip classification and use target_adavu -----------------
+    seq_norm = normalise_landmarks(seq)
+    
+    adavu_class = target_adavu
+    confidence  = 1.0
+    top_preds   = [(target_adavu, 1.0)]
 
     # --- Step 3: Angular analysis -----------------------------------------
-    angles            = compute_angles_from_sequence(seq)
+    angles            = compute_angles_from_sequence(seq_norm)
     student_mean      = angles.mean(axis=0)
     flagged, region_scores, _ = detect_mistakes(student_mean, adavu_class)
 

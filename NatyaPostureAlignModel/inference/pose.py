@@ -81,9 +81,13 @@ def extract_landmarks_from_video(
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         result = landmarker.detect(mp_image)
 
+        W = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+        H = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        aspect_ratio = W / H if H > 0 else 1.0
+
         if result.pose_landmarks:
             lm = result.pose_landmarks[0]
-            seq.append(np.array([[l.x, l.y, l.visibility] for l in lm]))
+            seq.append(np.array([[l.x * aspect_ratio, l.y, l.visibility] for l in lm]))
         else:
             seq.append(seq[-1] if seq else np.zeros((NUM_LANDMARKS, 3)))
 
@@ -93,6 +97,23 @@ def extract_landmarks_from_video(
         return None
 
     return np.array(seq)  # (T, 33, 3)
+
+
+def normalise_landmarks(seq: np.ndarray) -> np.ndarray:
+    """
+    Make landmarks camera- and distance-invariant.
+    Origin  → hip midpoint
+    Scale   → torso length (hip-mid to shoulder-mid)
+    seq: (T, 33, 3)  returns same shape (visibility col unchanged)
+    """
+    seq = seq.copy()
+    hip_mid      = (seq[:, 23, :2] + seq[:, 24, :2]) / 2          # (T, 2)
+    shoulder_mid = (seq[:, 11, :2] + seq[:, 12, :2]) / 2          # (T, 2)
+    scale        = np.linalg.norm(shoulder_mid - hip_mid, axis=1)  # (T,)
+    scale        = np.maximum(scale, 1e-6)[:, np.newaxis]          # (T, 1)
+
+    seq[:, :, :2] = (seq[:, :, :2] - hip_mid[:, np.newaxis, :]) / scale[:, np.newaxis, :]
+    return seq
 
 
 def build_feature_vector(seq: np.ndarray) -> np.ndarray:

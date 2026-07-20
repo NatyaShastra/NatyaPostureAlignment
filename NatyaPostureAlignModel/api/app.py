@@ -23,8 +23,9 @@ import tempfile
 from contextlib import asynccontextmanager
 import urllib.request
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
+import cv2
 
 # Ensure repo root is on the path when running from /app
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -137,7 +138,10 @@ async def health():
 
 
 @app.post("/analyse")
-async def analyse(video: UploadFile = File(...)):
+async def analyse(
+    video: UploadFile = File(...),
+    target_adavu: str = Form("Thattadavu"),
+):
     """
     Analyse a Bharatanatyam dance video.
 
@@ -167,7 +171,23 @@ async def analyse(video: UploadFile = File(...)):
         tmp_path = f.name
 
     try:
-        result = run_coach_v2(tmp_path)
+        # 720p check
+        cap = cv2.VideoCapture(tmp_path)
+        if cap.isOpened():
+            w = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+            h = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            cap.release()
+            
+            # Allow portrait or landscape, but smallest dimension must be >= 720
+            # Wait, often standard is 1280x720. Let's just check if min(w, h) >= 720.
+            # Actually, sometimes users upload 480p videos (854x480).
+            if min(w, h) < 720:
+                raise HTTPException(
+                    status_code=422, 
+                    detail="Video resolution too low. Please upload a video of at least 720p quality for accurate grading."
+                )
+
+        result = run_coach_v2(tmp_path, target_adavu=target_adavu)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
