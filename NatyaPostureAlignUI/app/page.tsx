@@ -13,6 +13,7 @@ type Stage = 'idle' | 'analysing' | 'results' | 'error'
 export default function Home() {
   const [stage,    setStage]    = useState<Stage>('idle')
   const [filename, setFilename] = useState('')
+  const [targetAdavu, setTargetAdavu] = useState<string>('Thattadavu')
   const [result,   setResult]   = useState<AnalysisResult | null>(null)
   const [error,    setError]    = useState('')
 
@@ -23,7 +24,7 @@ export default function Home() {
     setResult(null)
 
     try {
-      const res = await analyseVideo(file)
+      const res = await analyseVideo(file, targetAdavu)
       setResult(res)
       setStage('results')
     } catch (e: unknown) {
@@ -104,6 +105,20 @@ export default function Home() {
                 joint-angle deviation analysis, a weighted score, and personalised
                 coaching feedback.
               </p>
+            </div>
+
+            <div className="max-w-md mx-auto mb-6 text-left">
+              <label className="font-body text-sm block mb-2" style={{color:'var(--ivory-dark)', opacity:0.8}}>
+                Select Adavu to Grade:
+              </label>
+              <select 
+                className="w-full bg-black border border-white/20 text-white rounded-lg px-4 py-3 outline-none focus:border-[#C8952A] transition-colors"
+                value={targetAdavu}
+                onChange={e => setTargetAdavu(e.target.value)}
+              >
+                <option value="Thattadavu">Thattadavu</option>
+                <option value="Nattadavu">Nattadavu</option>
+              </select>
             </div>
 
             <UploadZone onFile={handleFile} />

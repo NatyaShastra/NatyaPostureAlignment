@@ -27,9 +27,10 @@ export interface AnalysisResult {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://theusefulnerd-dance-coach-ai.hf.space'
 
-export async function analyseVideo(file: File): Promise<AnalysisResult> {
+export async function analyseVideo(file: File, targetAdavu: string): Promise<AnalysisResult> {
   const form = new FormData()
   form.append('video', file)
+  form.append('target_adavu', targetAdavu)
 
   const res = await fetch(`${API_URL}/analyse`, {
     method: 'POST',

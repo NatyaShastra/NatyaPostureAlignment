@@ -1,11 +1,11 @@
 # Core ML
-torch==2.2.2
-torchvision==0.17.2
-scikit-learn==1.6.1
-numpy==1.26.4
+torch
+torchvision
+scikit-learn
+numpy
 
 # Pose estimation
-mediapipe==0.10.14
+mediapipe
 opencv-python-headless==4.9.0.80
 
 # LLM feedback
