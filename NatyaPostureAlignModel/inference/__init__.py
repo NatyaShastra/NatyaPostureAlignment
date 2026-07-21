@@ -134,7 +134,10 @@ def run_coach_v2(
                 )
                 overlay_b64 = overlay_to_base64(canvas)
         except Exception as e:
+            import traceback
+            err_str = traceback.format_exc()
             print(f"  Overlay generation failed: {e}")
+            feedback_text += f"\n\n[Debug Overlay Error] {e}\n{err_str}"
 
     # --- Assemble result --------------------------------------------------
     return {
