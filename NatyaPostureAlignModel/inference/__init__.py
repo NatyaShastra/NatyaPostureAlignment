@@ -58,6 +58,7 @@ def load_model_and_refs(
 ) -> None:
     """
     Load all inference dependencies. Call once at application startup.
+    """
 
     # --- Feature cache → angle reference distributions --------------------
     if not os.path.exists(features_cache):
