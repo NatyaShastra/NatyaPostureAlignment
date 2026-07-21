@@ -143,9 +143,19 @@ def extract_mid_frame_rgb(video_path: str) -> tuple[np.ndarray | None, int]:
     mid = total // 2
     cap.set(cv2.CAP_PROP_POS_FRAMES, mid)
     ret, frame = cap.read()
+
+    # Fallback: OpenCV CAP_PROP_POS_FRAMES often fails on mobile/VFR videos.
+    # If seeking fails, read sequentially from the start to reach the mid frame.
+    if not ret:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        for _ in range(mid + 1):
+            ret, frame = cap.read()
+            if not ret:
+                break
+
     cap.release()
 
-    if not ret:
+    if not ret or frame is None:
         return None, mid
 
     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), mid
