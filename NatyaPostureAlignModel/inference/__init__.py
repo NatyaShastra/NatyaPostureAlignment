@@ -92,7 +92,7 @@ def run_coach_v2(
     overlay_out_dir: str  = "/tmp",
 ) -> dict:
     """
-    Full Dance Coach pipeline: pose → classify → angle analysis → score → feedback → overlay.
+    Full Dance Coach pipeline: pose -> classify -> angle analysis -> score -> feedback -> overlay.
     """
     # --- Step 1: Pose extraction ------------------------------------------
     seq = extract_landmarks_from_video(video_path, num_frames)
