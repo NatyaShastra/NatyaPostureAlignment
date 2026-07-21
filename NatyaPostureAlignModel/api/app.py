@@ -174,20 +174,18 @@ async def analyse(
         tmp_path = f.name
 
     try:
-        # 720p check
+        # 480p check
         cap = cv2.VideoCapture(tmp_path)
         if cap.isOpened():
             w = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
             h = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
             cap.release()
             
-            # Allow portrait or landscape, but smallest dimension must be >= 720
-            # Wait, often standard is 1280x720. Let's just check if min(w, h) >= 720.
-            # Actually, sometimes users upload 480p videos (854x480).
-            if min(w, h) < 720:
+            # Allow portrait or landscape, but smallest dimension must be >= 480
+            if min(w, h) < 480:
                 raise HTTPException(
-                    status_code=422, 
-                    detail="Video resolution too low. Please upload a video of at least 720p quality for accurate grading."
+                    status_code=400, 
+                    detail="Video resolution too low. Please upload a video of at least 480p quality for accurate grading."
                 )
 
         result = run_coach_v2(tmp_path, target_adavu=target_adavu)
