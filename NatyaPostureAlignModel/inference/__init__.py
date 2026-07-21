@@ -129,8 +129,10 @@ def run_coach_v2(
             frame_rgb, _ = extract_mid_frame_rgb(video_path)
             if frame_rgb is not None:
                 mid    = len(seq) // 2
+                orig_H, orig_W = frame_rgb.shape[:2]
+                aspect_ratio = orig_W / orig_H if orig_H > 0 else 1.0
                 canvas = draw_skeleton_overlay(
-                    frame_rgb, seq[mid], flagged_names, adavu_label=adavu_class
+                    frame_rgb, seq[mid], flagged_names, aspect_ratio, adavu_label=adavu_class
                 )
                 overlay_b64 = overlay_to_base64(canvas)
         except Exception as e:
