@@ -9,7 +9,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender-dev \
     libgles2 \
     libegl1 \
-    libgl1-mesa-glx \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
