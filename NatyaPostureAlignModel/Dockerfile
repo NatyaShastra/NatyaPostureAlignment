@@ -7,8 +7,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsm6 \
     libxext6 \
     libxrender-dev \
-    libgles2 \
-    libegl1 \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
@@ -27,4 +25,4 @@ EXPOSE 7860
 # The cron job hits GET /health to keep the container alive.
 # Uvicorn with 1 worker — inference is CPU-bound so multiple workers
 # don't help on the free tier and just waste RAM.
-CMD uvicorn api.app:app --host 0.0.0.0 --port ${PORT:-7860} --workers 1
+CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "7860", "--workers", "1"]
