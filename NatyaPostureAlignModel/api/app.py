@@ -49,30 +49,30 @@ MAX_VIDEO_BYTES = 100 * 1024 * 1024   # 100 MB hard cap on uploads
 
 
 def _download_checkpoints() -> None:
-    """Download model checkpoint and feature cache from HF if not already present."""
+    """Download model checkpoint and feature cache from GitHub if not already present or if they are just LFS pointers."""
     os.makedirs("checkpoints", exist_ok=True)
 
-    if not os.path.exists(CHECKPOINT_PATH) or not os.path.exists(FEATURES_PATH):
-        print("[startup] Downloading model artefacts from HuggingFace...")
+    def needs_download(path: str) -> bool:
+        return not os.path.exists(path) or os.path.getsize(path) < 1024
+
+    if needs_download(CHECKPOINT_PATH) or needs_download(FEATURES_PATH):
+        print("[startup] Downloading model artefacts from GitHub (LFS pointers detected)...")
         try:
-            from huggingface_hub import hf_hub_download
-            if not os.path.exists(CHECKPOINT_PATH):
-                hf_hub_download(
-                    repo_id=HF_MODEL_REPO,
-                    filename="dance_coach_model.pt",
-                    local_dir="checkpoints",
-                )
+            # Using the direct raw GitHub links to fetch the actual LFS binaries
+            base_url = "https://github.com/NatyaShastra/NatyaPostureAlignment/raw/feature/upgrades/NatyaPostureAlignModel/checkpoints/"
+            
+            if needs_download(CHECKPOINT_PATH):
+                print(f"[startup] Downloading dance_coach_model.pt...")
+                urllib.request.urlretrieve(base_url + "dance_coach_model.pt", CHECKPOINT_PATH)
                 print(f"[startup] Downloaded dance_coach_model.pt")
-            if not os.path.exists(FEATURES_PATH):
-                hf_hub_download(
-                    repo_id=HF_MODEL_REPO,
-                    filename="adavu_features.npz",
-                    local_dir="checkpoints",
-                )
+                
+            if needs_download(FEATURES_PATH):
+                print(f"[startup] Downloading adavu_features.npz...")
+                urllib.request.urlretrieve(base_url + "adavu_features.npz", FEATURES_PATH)
                 print(f"[startup] Downloaded adavu_features.npz")
         except Exception as e:
-            print(f"[startup] WARNING: Could not download from HF: {e}")
-            print("[startup] Continuing — will fail at inference if files are missing")
+            print(f"[startup] WARNING: Could not download from GitHub: {e}")
+            print("[startup] Continuing — will fail at inference if files are missing or invalid")
 
     if not os.path.exists(MEDIAPIPE_PATH):
         print("[startup] Downloading MediaPipe pose model...")
