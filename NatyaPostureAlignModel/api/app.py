@@ -107,10 +107,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow the Vercel frontend and local dev
+# CORS# Read allowed origins from env, defaulting to localhost for dev and netlify for prod
 ALLOWED_ORIGINS = [
     o.strip()
-    for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:5500").split(",")
+    for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:5500,https://natya-posture-alignment.netlify.app").split(",")
     if o.strip()
 ]
 

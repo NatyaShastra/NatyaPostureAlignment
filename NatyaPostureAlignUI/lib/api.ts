@@ -25,7 +25,7 @@ export interface AnalysisResult {
   overlay_image_b64:  string | null
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://theusefulnerd-dance-coach-ai.hf.space'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://natya-posture-align-model-production.up.railway.app'
 
 export async function analyseVideo(file: File): Promise<AnalysisResult> {
   const form = new FormData()
