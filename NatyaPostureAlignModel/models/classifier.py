@@ -17,13 +17,15 @@ class AdavuClassifier(nn.Module):
             nn.BatchNorm1d(hidden),
             nn.ReLU(),
             nn.Dropout(dropout),
-
             nn.Linear(hidden, hidden // 2),
             nn.BatchNorm1d(hidden // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
-
-            nn.Linear(hidden // 2, num_classes),
+            nn.Linear(hidden // 2, hidden // 4),
+            nn.BatchNorm1d(hidden // 4),
+            nn.ReLU(),
+            nn.Dropout(dropout * 0.5),
+            nn.Linear(hidden // 4, num_classes),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

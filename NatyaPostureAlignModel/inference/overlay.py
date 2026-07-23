@@ -50,23 +50,37 @@ def draw_skeleton_overlay(
     frame_rgb: np.ndarray,
     landmarks_frame: np.ndarray,
     flagged_joint_names: set[str],
-    aspect_ratio: float,
+    img_size: tuple[int, int] = (480, 480),
     adavu_label: str = "",
 ) -> np.ndarray:
     """
     Render an annotated skeleton on a dimmed background.
+
+    Args:
+        frame_rgb:           (H, W, 3) RGB video frame
+        landmarks_frame:     (33, 3) normalised (x, y, visibility) landmarks
+        flagged_joint_names: set of joint names that were flagged
+        img_size:            (W, H) output size in pixels
+        adavu_label:         text to overlay at the top of the image
+
+    Returns:
+        (H, W, 3) BGR annotated image
     """
     orig_H, orig_W = frame_rgb.shape[:2]
-    
-    # Scale down for output while maintaining aspect ratio (target H ~640)
-    scale = 640.0 / orig_H if orig_H > 0 else 1.0
-    new_W = int(orig_W * scale)
-    new_H = 640
+    # Scale image so max dimension is 480 pixels
+    scale = 480.0 / max(orig_H, orig_W)
+    new_W, new_H = int(orig_W * scale), int(orig_H * scale)
     
     bg = cv2.resize(cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR), (new_W, new_H))
     canvas = (bg * 0.35).astype(np.uint8)
 
     lm = landmarks_frame   # (33, 3)
+    
+    # Landmarks were computed on a padded square of size = max(orig_H, orig_W)
+    # We must un-pad them to match the original frame dimensions!
+    size = max(orig_H, orig_W)
+    pad_h = (size - orig_H) // 2
+    pad_w = (size - orig_W) // 2
 
     # Map flagged joint names → landmark indices
     flagged_indices: set[int] = set()
@@ -75,10 +89,9 @@ def draw_skeleton_overlay(
             flagged_indices.update([a, v, c])
 
     def lm_px(idx: int) -> tuple[int, int]:
-        # Divide by aspect_ratio to undo the multiplier from pose.py and get back to [0,1]
-        x_val = lm[idx, 0] / aspect_ratio
-        y_val = lm[idx, 1]
-        return (int(x_val * new_W), int(y_val * new_H))
+        px_in_orig = (lm[idx, 0] * size) - pad_w
+        py_in_orig = (lm[idx, 1] * size) - pad_h
+        return (int(px_in_orig * scale), int(py_in_orig * scale))
 
     def joint_color(idx: int) -> tuple[int, int, int]:
         if idx not in SCORED_LANDMARKS:
@@ -138,9 +151,13 @@ def save_overlay_image(
     flagged_joints: list[dict],
     adavu_class: str,
     out_dir: str = "/tmp",
+    img_size: tuple[int, int] = (480, 480),
 ) -> str | None:
     """
     Generate the overlay for the mid-video frame and save as JPEG.
+
+    Returns:
+        Path to the saved image, or None on failure.
     """
     from .pose import extract_mid_frame_rgb
 
@@ -148,13 +165,10 @@ def save_overlay_image(
     frame_rgb, _ = extract_mid_frame_rgb(video_path)
     if frame_rgb is None:
         return None
-        
-    orig_H, orig_W = frame_rgb.shape[:2]
-    aspect_ratio = orig_W / orig_H if orig_H > 0 else 1.0
 
     mid = len(seq) // 2
     canvas = draw_skeleton_overlay(
-        frame_rgb, seq[mid], flagged_names, aspect_ratio, adavu_label=adavu_class
+        frame_rgb, seq[mid], flagged_names, img_size, adavu_label=adavu_class
     )
 
     safe = adavu_class.replace(" ", "_")
