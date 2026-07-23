@@ -23,9 +23,8 @@ import tempfile
 from contextlib import asynccontextmanager
 import urllib.request
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import cv2
 
 # Ensure repo root is on the path when running from /app
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -49,32 +48,22 @@ MEDIAPIPE_URL = (
 MAX_VIDEO_BYTES = 100 * 1024 * 1024   # 100 MB hard cap on uploads
 
 
-def _is_missing_or_lfs_pointer(filepath: str) -> bool:
-    if not os.path.exists(filepath):
-        return True
-    return os.path.getsize(filepath) < 1024
-
 def _download_checkpoints() -> None:
     """Download model checkpoint and feature cache from HF if not already present."""
     os.makedirs("checkpoints", exist_ok=True)
 
-    if _is_missing_or_lfs_pointer(CHECKPOINT_PATH) or _is_missing_or_lfs_pointer(FEATURES_PATH):
+    if not os.path.exists(CHECKPOINT_PATH) or not os.path.exists(FEATURES_PATH):
         print("[startup] Downloading model artefacts from HuggingFace...")
         try:
             from huggingface_hub import hf_hub_download
-            if _is_missing_or_lfs_pointer(CHECKPOINT_PATH):
-                if os.path.exists(CHECKPOINT_PATH):
-                    os.remove(CHECKPOINT_PATH) # Remove pointer before download
+            if not os.path.exists(CHECKPOINT_PATH):
                 hf_hub_download(
                     repo_id=HF_MODEL_REPO,
                     filename="dance_coach_model.pt",
                     local_dir="checkpoints",
                 )
                 print(f"[startup] Downloaded dance_coach_model.pt")
-                
-            if _is_missing_or_lfs_pointer(FEATURES_PATH):
-                if os.path.exists(FEATURES_PATH):
-                    os.remove(FEATURES_PATH) # Remove pointer before download
+            if not os.path.exists(FEATURES_PATH):
                 hf_hub_download(
                     repo_id=HF_MODEL_REPO,
                     filename="adavu_features.npz",
@@ -118,9 +107,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS — allow the Vercel frontend and local dev
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:5500").split(",")
+    if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
@@ -141,10 +137,7 @@ async def health():
 
 
 @app.post("/analyse")
-async def analyse(
-    video: UploadFile = File(...),
-    target_adavu: str = Form("Thattadavu"),
-):
+async def analyse(video: UploadFile = File(...)):
     """
     Analyse a Bharatanatyam dance video.
 
@@ -174,21 +167,7 @@ async def analyse(
         tmp_path = f.name
 
     try:
-        # 480p check
-        cap = cv2.VideoCapture(tmp_path)
-        if cap.isOpened():
-            w = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-            h = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-            cap.release()
-            
-            # Allow portrait or landscape, but smallest dimension must be >= 480
-            if min(w, h) < 480:
-                raise HTTPException(
-                    status_code=400, 
-                    detail="Video resolution too low. Please upload a video of at least 480p quality for accurate grading."
-                )
-
-        result = run_coach_v2(tmp_path, target_adavu=target_adavu)
+        result = run_coach_v2(tmp_path)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:

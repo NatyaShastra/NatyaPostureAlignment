@@ -14,7 +14,20 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
 NUM_LANDMARKS = 33
-FEATURE_DIM   = 297   # 33 × 3 × 3 stats (mean + std + velocity)
+FEATURE_DIM   = 163   # 132 + 27 + 4
+
+def pad_to_square(image: np.ndarray) -> np.ndarray:
+    """Pad an image to a 1:1 square aspect ratio using black borders."""
+    h, w = image.shape[:2]
+    if h == w:
+        return image
+    size = max(h, w)
+    pad_h = (size - h) // 2
+    pad_w = (size - w) // 2
+    return cv2.copyMakeBorder(
+        image, pad_h, size - h - pad_h, pad_w, size - w - pad_w,
+        cv2.BORDER_CONSTANT, value=[0, 0, 0]
+    )
 
 # Module-level singleton — initialised lazily on first call
 _pose_landmarker = None
@@ -77,17 +90,14 @@ def extract_landmarks_from_video(
             seq.append(seq[-1] if seq else np.zeros((NUM_LANDMARKS, 3)))
             continue
 
+        frame = pad_to_square(frame)
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         result = landmarker.detect(mp_image)
 
-        W = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-        H = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        aspect_ratio = W / H if H > 0 else 1.0
-
         if result.pose_landmarks:
             lm = result.pose_landmarks[0]
-            seq.append(np.array([[l.x * aspect_ratio, l.y, l.visibility] for l in lm]))
+            seq.append(np.array([[l.x, l.y, l.visibility] for l in lm]))
         else:
             seq.append(seq[-1] if seq else np.zeros((NUM_LANDMARKS, 3)))
 
@@ -116,23 +126,37 @@ def normalise_landmarks(seq: np.ndarray) -> np.ndarray:
     return seq
 
 
-def build_feature_vector(seq: np.ndarray) -> np.ndarray:
+def compute_symmetry_features(angles_mean: np.ndarray) -> np.ndarray:
+    from .angles import ANGLE_NAMES
+    SYMMETRY_PAIRS = [
+        (ANGLE_NAMES.index('left_knee'),     ANGLE_NAMES.index('right_knee')),
+        (ANGLE_NAMES.index('left_hip'),      ANGLE_NAMES.index('right_hip')),
+        (ANGLE_NAMES.index('left_elbow'),    ANGLE_NAMES.index('right_elbow')),
+        (ANGLE_NAMES.index('left_shoulder'), ANGLE_NAMES.index('right_shoulder')),
+    ]
+    return np.array([
+        abs(angles_mean[l] - angles_mean[r]) for l, r in SYMMETRY_PAIRS
+    ])
+
+def build_feature_vector(seq_norm: np.ndarray, angles_seq: np.ndarray) -> np.ndarray:
     """
-    Convert (T, 33, 3) landmark sequence → 297-dim feature vector.
-    297 = mean(99) + std(99) + mean_abs_velocity(99)
+    Convert (T, 33, 3) landmark sequence and angles into a 163-dim feature vector.
     """
-    mean = seq.mean(axis=0).flatten()                        # 99
-    std  = seq.std(axis=0).flatten()                         # 99
-    vel  = np.abs(np.diff(seq, axis=0)).mean(axis=0).flatten()  # 99
-    return np.concatenate([mean, std, vel])
+    coords = seq_norm[:, :, :2]
+    coord_mean = coords.mean(axis=0).flatten()
+    coord_std  = coords.std(axis=0).flatten()
+    
+    angle_mean = angles_seq.mean(axis=0)
+    angle_std  = angles_seq.std(axis=0)
+    angle_vel  = np.abs(np.diff(angles_seq, axis=0)).mean(axis=0) if len(angles_seq) > 1 else np.zeros_like(angle_mean)
+    
+    sym = compute_symmetry_features(angle_mean)
+    return np.concatenate([coord_mean, coord_std, angle_mean, angle_std, angle_vel, sym])
 
 
 def extract_mid_frame_rgb(video_path: str) -> tuple[np.ndarray | None, int]:
     """
     Extract the middle frame of a video as an RGB image.
-
-    Returns:
-        (frame_rgb, frame_index) or (None, 0) on failure.
     """
     cap = cv2.VideoCapture(video_path)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -143,7 +167,7 @@ def extract_mid_frame_rgb(video_path: str) -> tuple[np.ndarray | None, int]:
     mid = total // 2
     cap.set(cv2.CAP_PROP_POS_FRAMES, mid)
     ret, frame = cap.read()
-
+    
     # Fallback: OpenCV CAP_PROP_POS_FRAMES often fails on mobile/VFR videos.
     # If seeking fails, read sequentially from the start to reach the mid frame.
     if not ret:
@@ -152,7 +176,7 @@ def extract_mid_frame_rgb(video_path: str) -> tuple[np.ndarray | None, int]:
             ret, frame = cap.read()
             if not ret:
                 break
-
+                
     cap.release()
 
     if not ret or frame is None:
