@@ -90,14 +90,17 @@ def extract_landmarks_from_video(
             seq.append(seq[-1] if seq else np.zeros((NUM_LANDMARKS, 3)))
             continue
 
-        frame = pad_to_square(frame)
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         result = landmarker.detect(mp_image)
 
+        W = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+        H = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        aspect_ratio = W / H if H > 0 else 1.0
+
         if result.pose_landmarks:
             lm = result.pose_landmarks[0]
-            seq.append(np.array([[l.x, l.y, l.visibility] for l in lm]))
+            seq.append(np.array([[l.x * aspect_ratio, l.y, l.visibility] for l in lm]))
         else:
             seq.append(seq[-1] if seq else np.zeros((NUM_LANDMARKS, 3)))
 
