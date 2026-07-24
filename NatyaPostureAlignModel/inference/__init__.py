@@ -136,10 +136,12 @@ def run_coach_v2(
     if seq is None:
         return {"error": "Could not extract pose from video. Check that the video contains a visible person."}
 
-    angles = compute_angles_from_sequence(seq)
+    from .pose import normalise_landmarks
+    seq_norm = normalise_landmarks(seq)
+    angles = compute_angles_from_sequence(seq_norm)
 
     # --- Step 2: MLP classification ---------------------------------------
-    fv      = build_feature_vector(seq, angles)
+    fv      = build_feature_vector(seq_norm, angles)
     fv_norm = (fv - _X_mean) / (_X_std + 1e-8)
     fv_t    = torch.FloatTensor(fv_norm).unsqueeze(0).to(_device)
 
@@ -173,8 +175,10 @@ def run_coach_v2(
             frame_rgb, _ = extract_mid_frame_rgb(video_path)
             if frame_rgb is not None:
                 mid    = len(seq) // 2
+                orig_H, orig_W = frame_rgb.shape[:2]
+                aspect_ratio = orig_W / orig_H if orig_H > 0 else 1.0
                 canvas = draw_skeleton_overlay(
-                    frame_rgb, seq[mid], flagged_names, adavu_label=adavu_class
+                    frame_rgb, seq[mid], flagged_names, aspect_ratio, adavu_label=adavu_class
                 )
                 overlay_b64 = overlay_to_base64(canvas)
         except Exception as e:
