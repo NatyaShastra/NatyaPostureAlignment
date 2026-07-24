@@ -172,7 +172,17 @@ def run_coach_v2(
         try:
             from .overlay import draw_skeleton_overlay, overlay_to_base64
             flagged_names = {j["joint"] for j in flagged}
-            frame_rgb, _ = extract_mid_frame_rgb(video_path)
+            
+            import cv2
+            cap = cv2.VideoCapture(video_path)
+            total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            cap.release()
+            num_frames = len(seq)
+            step = max(1, total // num_frames) if num_frames > 0 else 1
+            mid = num_frames // 2
+            target_idx = min(mid * step, total - 1)
+            
+            frame_rgb, _ = extract_mid_frame_rgb(video_path, target_idx)
             if frame_rgb is not None:
                 mid    = len(seq) // 2
                 orig_H, orig_W = frame_rgb.shape[:2]

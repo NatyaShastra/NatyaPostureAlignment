@@ -139,13 +139,18 @@ def save_overlay_image(
     adavu_class: str,
     out_dir: str = "/tmp",
 ) -> str | None:
-    """
-    Generate the overlay for the mid-video frame and save as JPEG.
-    """
     from .pose import extract_mid_frame_rgb
-
+    import cv2
+    cap = cv2.VideoCapture(video_path)
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    cap.release()
+    num_frames = len(seq)
+    step = max(1, total // num_frames) if num_frames > 0 else 1
+    mid = num_frames // 2
+    target_idx = min(mid * step, total - 1)
+    
     flagged_names = {j["joint"] for j in flagged_joints}
-    frame_rgb, _ = extract_mid_frame_rgb(video_path)
+    frame_rgb, _ = extract_mid_frame_rgb(video_path, target_idx)
     if frame_rgb is None:
         return None
         

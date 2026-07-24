@@ -157,25 +157,25 @@ def build_feature_vector(seq_norm: np.ndarray, angles_seq: np.ndarray) -> np.nda
     return np.concatenate([coord_mean, coord_std, angle_mean, angle_std, angle_vel, sym])
 
 
-def extract_mid_frame_rgb(video_path: str) -> tuple[np.ndarray | None, int]:
+def extract_mid_frame_rgb(video_path: str, target_idx: int) -> tuple[np.ndarray | None, int]:
     """
-    Extract the middle frame of a video as an RGB image.
+    Extract a specific frame from the video as an RGB image.
     """
     cap = cv2.VideoCapture(video_path)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    if total < 2:
+    
+    if total <= 0:
         cap.release()
         return None, 0
-
-    mid = total // 2
-    cap.set(cv2.CAP_PROP_POS_FRAMES, mid)
+        
+    cap.set(cv2.CAP_PROP_POS_FRAMES, target_idx)
     ret, frame = cap.read()
     
     # Fallback: OpenCV CAP_PROP_POS_FRAMES often fails on mobile/VFR videos.
-    # If seeking fails, read sequentially from the start to reach the mid frame.
+    # If seeking fails, read sequentially from the start to reach the target frame.
     if not ret:
         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-        for _ in range(mid + 1):
+        for _ in range(target_idx + 1):
             ret, frame = cap.read()
             if not ret:
                 break
@@ -183,6 +183,6 @@ def extract_mid_frame_rgb(video_path: str) -> tuple[np.ndarray | None, int]:
     cap.release()
 
     if not ret or frame is None:
-        return None, mid
+        return None, 0
 
-    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), mid
+    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), target_idx
