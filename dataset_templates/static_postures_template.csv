@@ -1,0 +1,3 @@
+Posture_ID,Posture_Name,Image_Filename,Camera_Angle,Description,Key_Joints_Focus
+POS_01,Aramandi,aramandi_front.jpg,Front,"Half-sitting posture with feet apart (V-shape) and knees bent outwards","Knees, Ankles, Spine"
+POS_02,Murumandi,murumandi_side.jpg,Side,"Full sitting posture on the toes with knees bent outwards","Knees, Ankles, Spine"

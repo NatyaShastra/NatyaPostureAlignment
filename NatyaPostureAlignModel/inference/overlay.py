@@ -50,7 +50,7 @@ def draw_skeleton_overlay(
     frame_rgb: np.ndarray,
     landmarks_frame: np.ndarray,
     flagged_joint_names: set[str],
-    aspect_ratio: float,
+    aspect_ratio: float = 1.0, # Kept for signature compatibility but unused
     adavu_label: str = "",
 ) -> np.ndarray:
     """
@@ -75,8 +75,8 @@ def draw_skeleton_overlay(
             flagged_indices.update([a, v, c])
 
     def lm_px(idx: int) -> tuple[int, int]:
-        # Divide by aspect_ratio to undo the multiplier from pose.py and get back to [0,1]
-        x_val = lm[idx, 0] / aspect_ratio
+        # Image is padded square, so lm maps perfectly to [0,1]
+        x_val = lm[idx, 0]
         y_val = lm[idx, 1]
         return (int(x_val * new_W), int(y_val * new_H))
 
@@ -154,12 +154,8 @@ def save_overlay_image(
     if frame_rgb is None:
         return None
         
-    orig_H, orig_W = frame_rgb.shape[:2]
-    aspect_ratio = orig_W / orig_H if orig_H > 0 else 1.0
-
-    mid = len(seq) // 2
     canvas = draw_skeleton_overlay(
-        frame_rgb, seq[mid], flagged_names, aspect_ratio, adavu_label=adavu_class
+        frame_rgb, seq[mid], flagged_names, adavu_label=adavu_class
     )
 
     safe = adavu_class.replace(" ", "_")
@@ -172,3 +168,17 @@ def overlay_to_base64(image_bgr: np.ndarray) -> str:
     """Encode a BGR image as a base64 JPEG string (for JSON responses)."""
     _, buf = cv2.imencode(".jpg", image_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
     return base64.b64encode(buf).decode("utf-8")
+
+
+def draw_reference_skeleton(
+    landmarks_frame: np.ndarray,
+    adavu_label: str = "",
+) -> np.ndarray:
+    """
+    Render a clean reference skeleton on a studio dark background for side-by-side comparison.
+    """
+    studio_bg = np.zeros((640, 640, 3), dtype=np.uint8)
+    studio_bg[:] = (30, 25, 20)  # Sleek dark slate/warm grey studio background
+    return draw_skeleton_overlay(
+        studio_bg, landmarks_frame, set(), aspect_ratio=1.0, adavu_label=f"Master: {adavu_label}"
+    )

@@ -27,8 +27,7 @@ ADAVU_PASS_THRESHOLDS: dict[str, float] = {
 
 REGION_WEIGHTS: dict[str, float] = {
     "legs":   0.50,
-    "arms":   0.30,
-    "torso":  0.20,
+    "arms":   0.50,
 }
 
 # (min_score, grade_label, message)

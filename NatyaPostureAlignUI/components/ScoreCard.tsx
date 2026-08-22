@@ -91,9 +91,11 @@ export default function ScoreCard({ result }: Props) {
         <span className="text-xs font-body px-2" style={{color:'var(--gold)'}}>By region</span>
       </div>
 
-      <ScoreBar label="Legs"  value={result.region_scores.legs}  weight="50%" />
-      <ScoreBar label="Arms"  value={result.region_scores.arms}  weight="30%" />
-      <ScoreBar label="Torso" value={result.region_scores.torso} weight="20%" />
+      <ScoreBar label="Legs" value={result.region_scores.legs} weight="50%" />
+      <ScoreBar label="Arms" value={result.region_scores.arms} weight="50%" />
+      {result.region_scores.torso !== undefined && (
+        <ScoreBar label="Torso" value={result.region_scores.torso} weight="20%" />
+      )}
 
       {/* Pass threshold note */}
       {!result.passed && (

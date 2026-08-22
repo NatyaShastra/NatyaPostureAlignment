@@ -15,15 +15,18 @@ import numpy as np
 
 # (name, joint_a, vertex, joint_c) — all MediaPipe landmark indices
 ANGLE_DEFS: list[tuple[str, int, int, int]] = [
-    ("left_knee",       23, 25, 27),   # left hip → left knee → left ankle
-    ("right_knee",      24, 26, 28),   # right hip → right knee → right ankle
-    ("left_hip",        11, 23, 25),   # left shoulder → left hip → left knee
-    ("right_hip",       12, 24, 26),   # right shoulder → right hip → right knee
-    ("left_elbow",      11, 13, 15),   # left shoulder → left elbow → left wrist
-    ("right_elbow",     12, 14, 16),   # right shoulder → right elbow → right wrist
     ("left_shoulder",   13, 11, 23),   # left elbow → left shoulder → left hip
     ("right_shoulder",  14, 12, 24),   # right elbow → right shoulder → right hip
-    ("spine_lean",      23, 11, 24),   # left hip → left shoulder → right shoulder
+    ("left_elbow",      11, 13, 15),   # left shoulder → left elbow → left wrist
+    ("right_elbow",     12, 14, 16),   # right shoulder → right elbow → right wrist
+    ("left_wrist",      13, 15, 19),   # left elbow → left wrist → left index
+    ("right_wrist",     14, 16, 20),   # right elbow → right wrist → right index
+    ("left_hip",        11, 23, 25),   # left shoulder → left hip → left knee
+    ("right_hip",       12, 24, 26),   # right shoulder → right hip → right knee
+    ("left_knee",       23, 25, 27),   # left hip → left knee → left ankle
+    ("right_knee",      24, 26, 28),   # right hip → right knee → right ankle
+    ("left_ankle",      25, 27, 31),   # left knee → left ankle → left foot index
+    ("right_ankle",     26, 28, 32),   # right knee → right ankle → right foot index
 ]
 
 ANGLE_NAMES: list[str] = [d[0] for d in ANGLE_DEFS]
@@ -31,9 +34,8 @@ NUM_ANGLES:  int        = len(ANGLE_DEFS)
 
 # Body region → angle names mapping (for weighted scoring)
 REGIONS: dict[str, list[str]] = {
-    "legs":  ["left_knee", "right_knee", "left_hip", "right_hip"],
-    "arms":  ["left_elbow", "right_elbow", "left_shoulder", "right_shoulder"],
-    "torso": ["spine_lean"],
+    "legs":  ["left_knee", "right_knee", "left_hip", "right_hip", "left_ankle", "right_ankle"],
+    "arms":  ["left_elbow", "right_elbow", "left_shoulder", "right_shoulder", "left_wrist", "right_wrist"],
 }
 
 # Deviations larger than this (in σ) are flagged
@@ -123,6 +125,11 @@ def build_angle_refs(X: np.ndarray, y: np.ndarray) -> None:
 def get_angle_refs() -> dict:
     """Return the current reference distributions (for serialisation / inspection)."""
     return _angle_refs
+
+def set_angle_refs(refs: dict) -> None:
+    """Set the reference distributions from a loaded dictionary."""
+    global _angle_refs
+    _angle_refs = refs
 
 
 # ---------------------------------------------------------------------------
