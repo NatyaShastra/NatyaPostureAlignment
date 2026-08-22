@@ -119,22 +119,25 @@ def compute_frame_anomaly_scores(
     student_angles: np.ndarray,
     master_angles: np.ndarray,
     master_indices: np.ndarray,
-    ref_std: np.ndarray,
 ) -> np.ndarray:
     """
     Compute a 0.0 to 100.0 anomaly severity score for every student frame.
 
     A score over 75% indicates a severe form breakdown across key limbs.
+    Uses a fixed 25-degree tolerance (common for posture alignment) instead of dataset std, 
+    because temporal means of dynamic sequences create massive standard deviations.
     """
     T_s, D = student_angles.shape
     scores = np.zeros(T_s)
+    
+    TOLERANCE_DEG = 25.0
 
     for i in range(T_s):
         s_frame = student_angles[i]
         m_frame = master_angles[master_indices[i]]
 
-        # Deviation relative to standard deviation (3 sigma = 100% anomaly for that joint)
-        dev_ratios = np.abs(s_frame - m_frame) / (3.0 * np.maximum(ref_std, 3.0))
+        # Deviation relative to fixed 25 degree threshold (1.0 ratio = 100% anomaly for that joint)
+        dev_ratios = np.abs(s_frame - m_frame) / TOLERANCE_DEG
         dev_ratios = np.minimum(dev_ratios, 1.0)  # cap at 1.0 (100%)
 
         # Average severity across the 12 joints × 100
@@ -142,6 +145,56 @@ def compute_frame_anomaly_scores(
 
     return scores
 
+def detect_dynamic_mistakes(
+    student_angles: np.ndarray,
+    master_angles: np.ndarray,
+    master_indices: np.ndarray,
+    active_indices: np.ndarray
+):
+    """
+    Computes flagged joints and region scores for a dynamic dance step
+    by averaging the frame-by-frame absolute error across the active segment,
+    using a fixed 25.0 degree tolerance.
+    """
+    from .angles import ANGLE_DEFS, ANGLE_NAMES, REGIONS
+    
+    TOLERANCE_DEG = 25.0
+    
+    if len(active_indices) == 0:
+        active_indices = np.arange(len(student_angles))
+        
+    s_active = student_angles[active_indices]
+    m_active = master_angles[master_indices[active_indices]]
+    
+    # (Frames, Joints)
+    abs_diffs = np.abs(s_active - m_active)
+    
+    # Use the 90th percentile error instead of the mean error.
+    # This ensures that if the student breaks form significantly (e.g. for >10% of the movement),
+    # it gets flagged, preventing long periods of standing still from averaging out a terrible mistake.
+    representative_errors = np.percentile(abs_diffs, 90, axis=0)
+    
+    flagged_joints = []
+    for i, (name, *_) in enumerate(ANGLE_DEFS):
+        if representative_errors[i] > TOLERANCE_DEG:
+            flagged_joints.append({
+                "joint":           name,
+                "measured":        round(float(s_active[:, i].mean()), 1),
+                "reference":       round(float(m_active[:, i].mean()), 1),
+                "deviation":       round(float(representative_errors[i] / TOLERANCE_DEG), 2), 
+                "deviation_deg":   round(float(representative_errors[i]), 1),
+            })
+            
+    # Per-region score: fraction of joints within tolerance * 100
+    region_scores = {}
+    for region, joint_names in REGIONS.items():
+        idxs = [ANGLE_NAMES.index(j) for j in joint_names if j in ANGLE_NAMES]
+        within = float(np.sum(representative_errors[idxs] <= TOLERANCE_DEG))
+        region_scores[region] = round(within / len(idxs) * 100, 1)
+        
+    overall_score = round(float(np.mean(representative_errors <= TOLERANCE_DEG)) * 100, 1)
+    
+    return flagged_joints, region_scores, overall_score
 
 def select_top_k_anomalies(
     scores: np.ndarray,

@@ -210,18 +210,21 @@ def run_coach_v2(
         master_angles = ref_data.get("master_angles", np.tile(ref_mean, (len(angles), 1)))
 
     master_indices = compute_dtw_alignment(angles, master_angles)
-    anomaly_scores = compute_frame_anomaly_scores(angles, master_angles, master_indices, ref_std)
+    anomaly_scores = compute_frame_anomaly_scores(angles, master_angles, master_indices)
 
     # --- Step 4: Angular analysis & Scoring -------------------------------
-    # Use only the active part of the video (ignore padding at start/end) for the mean pose
+    # Use only the active part of the video (ignore padding at start/end) for the active segment
     active_indices = np.where((master_indices > 0) & (master_indices < len(master_angles) - 1))[0]
-    if len(active_indices) > 0:
-        student_active_mean = angles[active_indices[0] : active_indices[-1] + 1].mean(axis=0)
-    else:
-        student_active_mean = angles.mean(axis=0)
-
-    flagged, region_scores, _ = detect_mistakes(student_active_mean, adavu_class)
+    
+    from .dtw import detect_dynamic_mistakes
+    flagged, region_scores, overall_score = detect_dynamic_mistakes(
+        angles, master_angles, master_indices, active_indices
+    )
+    
+    from .scoring import compute_score
     score_result = compute_score(region_scores, adavu_class)
+    # Override overall_score in score_result to use our DTW-based overall score
+    score_result["overall"] = overall_score
 
     # --- Step 5: LLM feedback ---------------------------------------------
     feedback_text, feedback_source = get_llm_feedback(
