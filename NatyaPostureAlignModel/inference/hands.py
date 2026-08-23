@@ -15,8 +15,14 @@ def get_hand_landmarker():
         )
     return _hand_landmarker
 
-def pad_to_square(image: np.ndarray) -> np.ndarray:
+def pad_to_square(image: np.ndarray, max_dim: int = 640) -> np.ndarray:
     h, w = image.shape[:2]
+    # Downscale to save RAM
+    if max(h, w) > max_dim:
+        scale = max_dim / max(h, w)
+        image = cv2.resize(image, (int(w * scale), int(h * scale)))
+        h, w = image.shape[:2]
+        
     if h == w: return image
     size = max(h, w)
     pad_h = (size - h) // 2
