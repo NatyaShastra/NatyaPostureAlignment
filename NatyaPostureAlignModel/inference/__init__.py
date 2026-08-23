@@ -14,6 +14,7 @@ import os
 
 import numpy as np
 import torch
+torch.set_num_threads(1) # Conserve RAM by limiting thread pools
 import torch.nn.functional as F
 
 from models.classifier import AdavuClassifier
