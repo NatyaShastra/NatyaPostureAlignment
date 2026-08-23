@@ -1,46 +1,52 @@
 import os
-import torch
-from huggingface_hub import hf_hub_download
-import shutil
+import zipfile
+import gdown
 
-CKPT_PATH = 'checkpoints/dance_coach_model.pt'
-REPO_ID = 'vibhuti16/bharatnatyam_adavus'
 OUT_DIR = 'checkpoints/master_videos'
+GDRIVE_FILE_ID = '14RBl75ketothB0I-cvN-STsnaD4t3U2b'
+ZIP_PATH = 'checkpoints/master_videos.zip'
 
 def download_master_videos():
-    if not os.path.exists(CKPT_PATH):
-        print(f"Error: {CKPT_PATH} not found. Train the model first.")
+    os.makedirs('checkpoints', exist_ok=True)
+    
+    if os.path.exists(OUT_DIR) and len(os.listdir(OUT_DIR)) > 0:
+        print(f"Master videos already exist in {OUT_DIR}. Skipping download.")
         return
-
-    print("Loading checkpoint...")
-    ckpt = torch.load(CKPT_PATH, map_location='cpu', weights_only=False)
-    angle_refs = ckpt.get('angle_refs', {})
-
+        
+    print(f"Downloading master videos from Google Drive (ID: {GDRIVE_FILE_ID})...")
+    url = f'https://drive.google.com/uc?id={GDRIVE_FILE_ID}'
+    
+    try:
+        gdown.download(url, ZIP_PATH, quiet=False)
+    except Exception as e:
+        print(f"Failed to download from Google Drive: {e}")
+        return
+        
+    if not os.path.exists(ZIP_PATH):
+        print("Download failed or file not found.")
+        return
+        
+    print(f"Extracting {ZIP_PATH} to {OUT_DIR}...")
     os.makedirs(OUT_DIR, exist_ok=True)
     
-    print(f"Found {len(angle_refs)} classes. Downloading master videos...")
-    for cls, ref in angle_refs.items():
-        hf_path = ref.get('master_hf_path')
-        if not hf_path:
-            print(f"Skipping {cls} - no master video path found in checkpoint.")
-            continue
-            
-        out_path = os.path.join(OUT_DIR, f"{cls}.mp4")
-        if os.path.exists(out_path):
-            print(f"Already exists: {out_path}")
-            continue
-            
-        print(f"Downloading {cls} -> {hf_path}")
-        try:
-            tmp = hf_hub_download(
-                repo_id=REPO_ID, 
-                filename=hf_path, 
-                repo_type='dataset'
-            )
-            shutil.copy(tmp, out_path)
-            print(f"  Saved: {out_path}")
-        except Exception as e:
-            print(f"  Failed: {e}")
+    try:
+        with zipfile.ZipFile(ZIP_PATH, 'r') as zip_ref:
+            # Extract files directly into OUT_DIR, ignoring any folder structure inside the zip
+            for member in zip_ref.namelist():
+                filename = os.path.basename(member)
+                if not filename: # Skip directories
+                    continue
+                
+                source = zip_ref.open(member)
+                target_path = os.path.join(OUT_DIR, filename)
+                with open(target_path, "wb") as target:
+                    target.write(source.read())
+        
+        print("Extraction complete. Cleaning up zip file...")
+        os.remove(ZIP_PATH)
+        print("Master videos are ready for production!")
+    except Exception as e:
+        print(f"Failed to extract zip file: {e}")
 
 if __name__ == '__main__':
     download_master_videos()

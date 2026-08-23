@@ -197,7 +197,10 @@ def run_coach_v2(
         master_angles = ref_data["high_res_master_angles"]
     else:
         vid_filename = CLASS_TO_FILE.get(adavu_class, adavu_class)
-        master_vid_path = os.path.abspath(f"/Volumes/Munu/Master Videos/{vid_filename}.mp4")
+        prod_vid_path = os.path.abspath(f"checkpoints/master_videos/{vid_filename}.mp4")
+        local_vid_path = os.path.abspath(f"/Volumes/Munu/Master Videos/{vid_filename}.mp4")
+        master_vid_path = prod_vid_path if os.path.exists(prod_vid_path) else local_vid_path
+        
         if os.path.exists(master_vid_path):
             m_seq = extract_landmarks_from_video(master_vid_path, num_frames=len(angles))
             if m_seq is not None:
@@ -304,7 +307,9 @@ def run_coach_v2(
                 m_img_b64 = None
                 if m_idx < len(master_angles):
                     vid_filename = CLASS_TO_FILE.get(adavu_class, adavu_class)
-                    master_vid_path = os.path.abspath(f"/Volumes/Munu/Master Videos/{vid_filename}.mp4")
+                    prod_vid_path = os.path.abspath(f"checkpoints/master_videos/{vid_filename}.mp4")
+                    local_vid_path = os.path.abspath(f"/Volumes/Munu/Master Videos/{vid_filename}.mp4")
+                    master_vid_path = prod_vid_path if os.path.exists(prod_vid_path) else local_vid_path
                     m_frame_rgb = None
                     actual_m_idx = 0
                     if os.path.exists(master_vid_path):

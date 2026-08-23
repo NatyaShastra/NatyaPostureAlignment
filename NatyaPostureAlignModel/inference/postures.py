@@ -75,7 +75,10 @@ def run_posture_coach(image_path: str, target_class: str) -> dict:
     
     # Master image
     m_img_b64 = None
-    master_path = f"/Volumes/Munu/Master Videos/{target_class}.png"
+    prod_path = os.path.abspath(f"checkpoints/master_videos/{target_class}.png")
+    local_path = os.path.abspath(f"/Volumes/Munu/Master Videos/{target_class}.png")
+    master_path = prod_path if os.path.exists(prod_path) else local_path
+    
     if os.path.exists(master_path):
         m_frame = cv2.imread(master_path)
         m_frame = pad_to_square(m_frame)
