@@ -6,8 +6,15 @@ import mediapipe as mp
 NUM_LANDMARKS = 33
 FEATURE_DIM   = 174
 
-def pad_to_square(image: np.ndarray) -> np.ndarray:
+def pad_to_square(image: np.ndarray, max_dim: int = 640) -> np.ndarray:
     h, w = image.shape[:2]
+    # 1. Downscale if too large to save RAM (MediaPipe uses 256x256 internally anyway)
+    if max(h, w) > max_dim:
+        scale = max_dim / max(h, w)
+        image = cv2.resize(image, (int(w * scale), int(h * scale)))
+        h, w = image.shape[:2]
+        
+    # 2. Pad to square
     if h == w:
         return image
     size = max(h, w)
