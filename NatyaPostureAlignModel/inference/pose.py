@@ -30,6 +30,8 @@ _pose_landmarker = None
 def get_pose_landmarker(model_path: str = "pose_landmarker_heavy.task"):
     global _pose_landmarker
     if _pose_landmarker is None:
+        import gc
+        gc.collect()
         _pose_landmarker = mp.solutions.pose.Pose(
             static_image_mode=True,
             model_complexity=0, 
