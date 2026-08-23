@@ -87,9 +87,7 @@ def load_model_and_refs(
     from .postures import load_posture_refs
     load_posture_refs(postures_path)
     
-    from .hands import get_hand_landmarker, build_hasta_refs
-    get_hand_landmarker()
-    print(f"[startup] MediaPipe HandLandmarker ready")
+    from .hands import build_hasta_refs
     
     if os.path.exists("checkpoints/hastas_features.npz"):
         data = np.load("checkpoints/hastas_features.npz", allow_pickle=True)
@@ -98,10 +96,6 @@ def load_model_and_refs(
         import inference.hands as hands_module
         hands_module._hasta_refs = hasta_refs
         print(f"[startup] Hasta refs built from {len(data['X'])} cached samples")
-
-    # --- MediaPipe ---------------------------------------------------------
-    get_pose_landmarker(mediapipe_model)
-    print(f"[startup] MediaPipe PoseLandmarker ready")
 
     # --- Groq --------------------------------------------------------------
     init_groq_client(groq_api_key)
