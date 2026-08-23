@@ -80,16 +80,6 @@ def _download_checkpoints() -> None:
             print(f"[startup] WARNING: Could not download from GitHub: {e}")
             print("[startup] Continuing — will fail at inference if files are missing or invalid")
 
-    if not os.path.exists(MEDIAPIPE_PATH):
-        print("[startup] Downloading MediaPipe pose model...")
-        urllib.request.urlretrieve(MEDIAPIPE_URL, MEDIAPIPE_PATH)
-        print(f"[startup] MediaPipe pose model ready")
-
-    if not os.path.exists(HANDS_MODEL_PATH):
-        print("[startup] Downloading MediaPipe hands model...")
-        urllib.request.urlretrieve(HANDS_URL, HANDS_MODEL_PATH)
-        print(f"[startup] MediaPipe hands model ready")
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -99,7 +89,6 @@ async def lifespan(app: FastAPI):
         checkpoint_path=CHECKPOINT_PATH,
         postures_path="checkpoints/posture_model.pt",
         hastas_path="checkpoints/hastas_model.pt",
-        mediapipe_model=MEDIAPIPE_PATH,
         groq_api_key=os.environ.get("GROQ_API_KEY"),
     )
     print("[startup] Dance Coach ready ✓")
@@ -171,19 +160,22 @@ async def analyse(
     if video.content_type not in allowed_types:
         raise HTTPException(status_code=415, detail=f"Unsupported file type: {video.content_type}")
 
-    # Read and size-check
-    data = await video.read()
-    if len(data) > MAX_VIDEO_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Video too large ({len(data) // 1024 // 1024} MB). Maximum is 100 MB.",
-        )
-
-    # Write to temp file (MediaPipe needs a file path, not bytes)
+    # Size is hard to check perfectly before reading, but FastAPI UploadFile is spooled
+    # Write to temp file in chunks to prevent OOM
+    import shutil
     suffix = os.path.splitext(video.filename or "video.mp4")[1] or ".mp4"
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
-        f.write(data)
+        shutil.copyfileobj(video.file, f)
         tmp_path = f.name
+        
+    # Check size after saving
+    file_size = os.path.getsize(tmp_path)
+    if file_size > MAX_VIDEO_BYTES:
+        os.remove(tmp_path)
+        raise HTTPException(
+            status_code=413,
+            detail=f"Video too large ({file_size // 1024 // 1024} MB). Maximum is 100 MB.",
+        )
 
     try:
         if category == "steps":
