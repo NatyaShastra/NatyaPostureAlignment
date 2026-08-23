@@ -31,7 +31,7 @@ def get_pose_landmarker(model_path: str = "pose_landmarker_heavy.task"):
     global _pose_landmarker
     if _pose_landmarker is None:
         _pose_landmarker = mp.solutions.pose.Pose(
-            static_image_mode=False,
+            static_image_mode=True,
             model_complexity=0, 
             enable_segmentation=False,
             min_detection_confidence=0.5,
@@ -58,6 +58,7 @@ def extract_landmarks_from_video(
     target_indices = set(indices)
     max_idx = max(target_indices) if target_indices else -1
 
+    import gc
     raw_seq_dict = {}
     frame_idx = 0
     while True:
@@ -73,6 +74,10 @@ def extract_landmarks_from_video(
             if result.pose_landmarks:
                 lm = result.pose_landmarks.landmark
                 raw_seq_dict[frame_idx] = np.array([[l.x, l.y, l.visibility] for l in lm])
+                
+            # Force aggressive garbage collection to prevent RAM creep
+            del rgb, rgb_padded, result
+            gc.collect()
 
         frame_idx += 1
 
