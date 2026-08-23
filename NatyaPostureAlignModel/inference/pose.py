@@ -25,7 +25,7 @@ def get_pose_landmarker(model_path: str = "pose_landmarker_heavy.task"):
     if _pose_landmarker is None:
         _pose_landmarker = mp.solutions.pose.Pose(
             static_image_mode=False,
-            model_complexity=1, 
+            model_complexity=0, 
             enable_segmentation=False,
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5
