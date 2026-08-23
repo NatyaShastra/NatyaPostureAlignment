@@ -263,8 +263,40 @@ def run_coach_v2(
                 mid_s_idx = 0
                 mid_vid_idx = 0
             
-            # Extract RGB frames from video in a single pass
+            # Extract RGB frames from STUDENT video in a single pass
             extracted_rgb = extract_frames_rgb(video_path, list(vid_indices_map.values()))
+            
+            # Pre-extract MASTER video frames in a single pass to prevent OOM
+            master_vid_path = ""
+            m_extracted_rgb = {}
+            m_indices_map = {}
+            if len(top_5_idx) > 0:
+                vid_filename = CLASS_TO_FILE.get(adavu_class, adavu_class)
+                prod_vid_path = os.path.abspath(f"checkpoints/master_videos/{vid_filename}.mp4")
+                local_vid_path = os.path.abspath(f"/Volumes/Munu/Master Videos/{vid_filename}.mp4")
+                master_vid_path = prod_vid_path if os.path.exists(prod_vid_path) else local_vid_path
+                
+                if os.path.exists(master_vid_path):
+                    import cv2
+                    cap = cv2.VideoCapture(master_vid_path)
+                    m_total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                    cap.release()
+                    
+                    if m_total > 0:
+                        num_master_frames = len(master_angles)
+                        m_indices = np.linspace(0, m_total - 1, num_master_frames, dtype=int)
+                        needed_m_indices = []
+                        for s_idx in top_5_idx:
+                            m_idx = master_indices[s_idx]
+                            if m_idx < len(master_angles):
+                                safe_m_idx = min(int(m_idx), num_master_frames - 1)
+                                actual_m_idx = m_indices[safe_m_idx]
+                                needed_m_indices.append(int(actual_m_idx))
+                                m_indices_map[s_idx] = int(actual_m_idx)
+                        
+                        if needed_m_indices:
+                            from .pose import extract_frames_rgb
+                            m_extracted_rgb = extract_frames_rgb(master_vid_path, needed_m_indices)
             
             # 4. Generate overall mid-frame overlay (backwards compat)
             if mid_vid_idx in extracted_rgb:
@@ -292,7 +324,6 @@ def run_coach_v2(
                     f_rgb = extracted_rgb[vid_idx]
                     o_H, o_W = f_rgb.shape[:2]
                     ar = o_W / o_H if o_H > 0 else 1.0
-                    # Identify flagged joints specifically in this frame
                     frame_flagged = {row["joint"].lower(): row["left_flagged"] or row["right_flagged"] for row in comp_table}
                     flag_names_frame = {f"left_{j}" for j, flg in frame_flagged.items() if flg} | {f"right_{j}" for j, flg in frame_flagged.items() if flg}
                     s_canvas = draw_skeleton_overlay(f_rgb, seq[s_idx], flag_names_frame, ar, adavu_label=f"Frame #{vid_idx}")
@@ -301,26 +332,8 @@ def run_coach_v2(
                 # Master image reference skeleton
                 m_img_b64 = None
                 if m_idx < len(master_angles):
-                    vid_filename = CLASS_TO_FILE.get(adavu_class, adavu_class)
-                    prod_vid_path = os.path.abspath(f"checkpoints/master_videos/{vid_filename}.mp4")
-                    local_vid_path = os.path.abspath(f"/Volumes/Munu/Master Videos/{vid_filename}.mp4")
-                    master_vid_path = prod_vid_path if os.path.exists(prod_vid_path) else local_vid_path
-                    m_frame_rgb = None
-                    actual_m_idx = 0
-                    if os.path.exists(master_vid_path):
-                        from .pose import extract_mid_frame_rgb
-                        import cv2
-                        
-                        cap = cv2.VideoCapture(master_vid_path)
-                        m_total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                        cap.release()
-                        
-                        if m_total > 0:
-                            num_master_frames = len(master_angles)
-                            m_indices = np.linspace(0, m_total - 1, num_master_frames, dtype=int)
-                            safe_m_idx = min(int(m_idx), num_master_frames - 1)
-                            actual_m_idx = m_indices[safe_m_idx]
-                            m_frame_rgb, _ = extract_mid_frame_rgb(master_vid_path, int(actual_m_idx))
+                    actual_m_idx = m_indices_map.get(s_idx, 0)
+                    m_frame_rgb = m_extracted_rgb.get(actual_m_idx, None)
 
                     if m_frame_rgb is not None:
                         from .pose import get_pose_landmarker
