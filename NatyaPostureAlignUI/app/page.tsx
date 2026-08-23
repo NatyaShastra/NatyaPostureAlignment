@@ -9,6 +9,28 @@ import CoachingFeedback from '@/components/CoachingFeedback'
 import SkeletonOverlay  from '@/components/SkeletonOverlay'
 
 type Stage = 'idle' | 'analysing' | 'results' | 'error'
+type Category = 'Dance Steps' | 'Postures' | 'Hastas'
+
+const DANCE_CLASSES: Record<string, string[]> = {
+  'Thattadavu': [
+    'THA_FR_GE_01', 'THA_FR_GE_02', 'THA_FR_GE_03', 'THA_FR_GE_04',
+    'THA_FT_GE_05', 'THA_FT_GE_06', 'THA_FT_GE_07', 'THA_FT_GE_08'
+  ],
+  'Naatadavu': [
+    'NAA_FR_GE_01', 'NAA_FR_GE_02', 'NAA_FR_GD_03', 'NAA_FR_GD_04',
+    'NAA_FT_GD_05', 'NAA_FT_GE_06', 'NAA_FT_GE_07', 'NAA_FT_GE_08'
+  ]
+}
+
+const POSTURES = ['Sama padham', 'Aramandi', 'Murumandi']
+const HASTAS = [
+  "PATAKA", "TRIPATAKA", "ARDHA PATAKA", "KARTARIMUKHA", "MAYURA", 
+  "ARDHACHANDRA", "ARRALA", "SHUKATUNDA", "MUSHTI", "SHIKARA", 
+  "KAPITHA", "KATAKAMUKAHA", "SUCHI", "CHANDRAKALA", "PADMAKOSHA", 
+  "SARPASIRASHA", "MARGASHIRSHA", "SIMBAMUKAHA", "KANGULO", "ALAPADMA", 
+  "CHATHURA", "BHRAMARA", "HAMSASYA", "HAMSAPAKSHA", "SANDANSHA", 
+  "MUKHULA", "TAMARACHUDA", "TRISHULA"
+]
 
 export default function Home() {
   const [stage,    setStage]    = useState<Stage>('idle')
@@ -16,21 +38,40 @@ export default function Home() {
   const [result,   setResult]   = useState<AnalysisResult | null>(null)
   const [error,    setError]    = useState('')
 
+  const [category, setCategory] = useState<Category>('Dance Steps')
+  const [subCategory, setSubCategory] = useState<string>('Thattadavu')
+  const [stepIndex, setStepIndex] = useState<number>(0)
+  const [posture, setPosture] = useState<string>('Sama padham')
+  const [hasta, setHasta] = useState<string>('PATAKA')
+
   const handleFile = useCallback(async (file: File) => {
     setFilename(file.name)
     setStage('analysing')
     setError('')
     setResult(null)
 
+    let targetClass = ''
+    let backendCategory = ''
+    if (category === 'Dance Steps') {
+      targetClass = DANCE_CLASSES[subCategory][stepIndex]
+      backendCategory = 'steps'
+    } else if (category === 'Postures') {
+      targetClass = posture
+      backendCategory = 'postures'
+    } else if (category === 'Hastas') {
+      targetClass = hasta
+      backendCategory = 'hastas'
+    }
+
     try {
-      const res = await analyseVideo(file)
+      const res = await analyseVideo(file, backendCategory, targetClass)
       setResult(res)
       setStage('results')
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Unknown error')
       setStage('error')
     }
-  }, [])
+  }, [category, subCategory, stepIndex, posture, hasta])
 
   function reset() {
     setStage('idle')
@@ -67,7 +108,7 @@ export default function Home() {
 
           <div className="flex items-center gap-6">
             <div className="font-body text-xs" style={{color:'var(--ivory-dark)', opacity:0.4}}>
-              14 adavu classes · 88.7% accuracy · 9 joint angles
+              14 adavu classes · 88.7% accuracy · 12 bilateral angles · DTW Aligned
             </div>
             {stage === 'results' && (
               <button
@@ -91,19 +132,82 @@ export default function Home() {
         {/* ── IDLE ── */}
         {stage === 'idle' && (
           <div className="max-w-2xl mx-auto animate-fade-up">
-            <div className="text-center mb-12">
+            <div className="text-center mb-8">
               <p className="font-body text-lg mb-3" style={{color:'var(--gold)', opacity:0.8}}>
                 ✦ Teacher Demo
               </p>
               <h2 className="font-display text-5xl leading-tight mb-4" style={{color:'var(--ivory)'}}>
-                Adavu Analysis<br/>
+                AI Dance Coach<br/>
                 <span style={{color:'var(--saffron)'}}>in seconds</span>
               </h2>
-              <p className="font-body text-lg leading-relaxed" style={{color:'var(--ivory-dark)', opacity:0.7}}>
-                Upload a student's Bharatanatyam video and receive classification,
-                joint-angle deviation analysis, a weighted score, and personalised
-                coaching feedback.
+              <p className="font-body text-lg leading-relaxed mb-8" style={{color:'var(--ivory-dark)', opacity:0.7}}>
+                Select your target exercise and upload a video or photo to receive a
+                detailed scorecard and personalised feedback.
               </p>
+
+              {/* Dynamic Dropdowns */}
+              <div className="flex flex-col sm:flex-row justify-center gap-4 mb-8">
+                <select 
+                  className="bg-black border rounded-lg px-4 py-2 font-body text-ivory outline-none focus:border-saffron"
+                  style={{borderColor: 'rgba(200,149,42,0.3)'}}
+                  value={category} 
+                  onChange={(e) => setCategory(e.target.value as Category)}
+                >
+                  <option value="Dance Steps">Dance Steps</option>
+                  <option value="Postures">Static Postures</option>
+                  <option value="Hastas">Hastas (Hand Gestures)</option>
+                </select>
+
+                {category === 'Dance Steps' && (
+                  <>
+                    <select 
+                      className="bg-black border rounded-lg px-4 py-2 font-body text-ivory outline-none focus:border-saffron"
+                      style={{borderColor: 'rgba(200,149,42,0.3)'}}
+                      value={subCategory} 
+                      onChange={(e) => {
+                        setSubCategory(e.target.value)
+                        setStepIndex(0)
+                      }}
+                    >
+                      <option value="Thattadavu">Thattadavu</option>
+                      <option value="Naatadavu">Naatadavu</option>
+                    </select>
+
+                    <select 
+                      className="bg-black border rounded-lg px-4 py-2 font-body text-ivory outline-none focus:border-saffron"
+                      style={{borderColor: 'rgba(200,149,42,0.3)'}}
+                      value={stepIndex} 
+                      onChange={(e) => setStepIndex(parseInt(e.target.value))}
+                    >
+                      {[1,2,3,4,5,6,7,8].map((num, idx) => (
+                        <option key={num} value={idx}>Step {num}</option>
+                      ))}
+                    </select>
+                  </>
+                )}
+
+                {category === 'Postures' && (
+                  <select 
+                    className="bg-black border rounded-lg px-4 py-2 font-body text-ivory outline-none focus:border-saffron"
+                    style={{borderColor: 'rgba(200,149,42,0.3)'}}
+                    value={posture} 
+                    onChange={(e) => setPosture(e.target.value)}
+                  >
+                    {POSTURES.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                )}
+
+                {category === 'Hastas' && (
+                  <select 
+                    className="bg-black border rounded-lg px-4 py-2 font-body text-ivory outline-none focus:border-saffron"
+                    style={{borderColor: 'rgba(200,149,42,0.3)'}}
+                    value={hasta} 
+                    onChange={(e) => setHasta(e.target.value)}
+                  >
+                    {HASTAS.map(h => <option key={h} value={h}>{h}</option>)}
+                  </select>
+                )}
+              </div>
             </div>
 
             <UploadZone onFile={handleFile} />
@@ -112,7 +216,7 @@ export default function Home() {
             <div className="grid grid-cols-3 gap-4 mt-10">
               {[
                 { icon: '◎', label: 'Adavu classification', sub: '14 classes · MLP classifier' },
-                { icon: '⟡', label: 'Joint angle scoring',  sub: '9 angles · 1.5σ deviation' },
+                { icon: '⟡', label: 'Joint angle scoring',  sub: '12 bilateral angles · DTW aligned' },
                 { icon: '✦', label: 'LLM coaching',          sub: 'Groq · llama-3.3-70b' },
               ].map(f => (
                 <div key={f.label} className="card rounded-xl p-4 text-center">
@@ -164,25 +268,22 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Three-column layout for teacher demo */}
-            <div className="grid grid-cols-12 gap-6">
-
-              {/* Left col: score + skeleton */}
-              <div className="col-span-4 space-y-6">
+            {/* Top summary row: Score, Flagged Joints, Coaching Feedback */}
+            <div className="grid grid-cols-12 gap-6 mb-8">
+              <div className="col-span-12 lg:col-span-4">
                 <ScoreCard result={result} />
-                <SkeletonOverlay b64={result.overlay_image_b64} adavuClass={result.adavu_class} />
               </div>
-
-              {/* Middle col: joint analysis */}
-              <div className="col-span-4">
+              <div className="col-span-12 lg:col-span-4">
                 <FlaggedJoints joints={result.flagged_joints} />
               </div>
-
-              {/* Right col: coaching feedback */}
-              <div className="col-span-4">
+              <div className="col-span-12 lg:col-span-4">
                 <CoachingFeedback feedback={result.coaching_feedback} source={result.feedback_source} />
               </div>
+            </div>
 
+            {/* Bottom showcase section: DTW Top 5 Temporal Suite & Overlay */}
+            <div className="w-full">
+              <SkeletonOverlay b64={result.overlay_image_b64} adavuClass={result.adavu_class} top5={result.top_5_anomalies} />
             </div>
           </div>
         )}

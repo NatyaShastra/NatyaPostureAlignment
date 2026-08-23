@@ -23,7 +23,7 @@ import tempfile
 from contextlib import asynccontextmanager
 import urllib.request
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 
 # Ensure repo root is on the path when running from /app
@@ -38,11 +38,17 @@ from inference import load_model_and_refs, run_coach_v2
 CHECKPOINT_PATH  = os.environ.get("DANCE_COACH_MODEL_PT",  "checkpoints/dance_coach_model.pt")
 FEATURES_PATH    = os.environ.get("DANCE_COACH_FEATURES",  "checkpoints/adavu_features.npz")
 MEDIAPIPE_PATH   = os.environ.get("MEDIAPIPE_MODEL",       "pose_landmarker_heavy.task")
+HANDS_MODEL_PATH = "hand_landmarker.task"
+
 HF_MODEL_REPO    = os.environ.get("HF_MODEL_REPO",        "theusefulnerd/dance-coach-model")
 
 MEDIAPIPE_URL = (
     "https://storage.googleapis.com/mediapipe-models/"
     "pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task"
+)
+HANDS_URL = (
+    "https://storage.googleapis.com/mediapipe-models/"
+    "hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task"
 )
 
 MAX_VIDEO_BYTES = 100 * 1024 * 1024   # 100 MB hard cap on uploads
@@ -76,9 +82,13 @@ def _download_checkpoints() -> None:
 
     if not os.path.exists(MEDIAPIPE_PATH):
         print("[startup] Downloading MediaPipe pose model...")
-        
         urllib.request.urlretrieve(MEDIAPIPE_URL, MEDIAPIPE_PATH)
-        print(f"[startup] MediaPipe model ready")
+        print(f"[startup] MediaPipe pose model ready")
+
+    if not os.path.exists(HANDS_MODEL_PATH):
+        print("[startup] Downloading MediaPipe hands model...")
+        urllib.request.urlretrieve(HANDS_URL, HANDS_MODEL_PATH)
+        print(f"[startup] MediaPipe hands model ready")
 
 
 @asynccontextmanager
@@ -87,7 +97,8 @@ async def lifespan(app: FastAPI):
     _download_checkpoints()
     load_model_and_refs(
         checkpoint_path=CHECKPOINT_PATH,
-        features_cache=FEATURES_PATH,
+        postures_path="checkpoints/posture_model.pt",
+        hastas_path="checkpoints/hastas_model.pt",
         mediapipe_model=MEDIAPIPE_PATH,
         groq_api_key=os.environ.get("GROQ_API_KEY"),
     )
@@ -137,7 +148,11 @@ async def health():
 
 
 @app.post("/analyse")
-async def analyse(video: UploadFile = File(...)):
+async def analyse(
+    video: UploadFile = File(...),
+    category: str = Form(...),
+    target_class: str = Form(...)
+):
     """
     Analyse a Bharatanatyam dance video.
 
@@ -149,7 +164,11 @@ async def analyse(video: UploadFile = File(...)):
     <img src="data:image/jpeg;base64,..."> tag.
     """
     # Validate content type
-    if video.content_type not in ("video/mp4", "video/quicktime", "video/x-msvideo", "application/octet-stream"):
+    allowed_types = (
+        "video/mp4", "video/quicktime", "video/x-msvideo", 
+        "application/octet-stream", "image/jpeg", "image/png"
+    )
+    if video.content_type not in allowed_types:
         raise HTTPException(status_code=415, detail=f"Unsupported file type: {video.content_type}")
 
     # Read and size-check
@@ -167,7 +186,16 @@ async def analyse(video: UploadFile = File(...)):
         tmp_path = f.name
 
     try:
-        result = run_coach_v2(tmp_path)
+        if category == "steps":
+            result = run_coach_v2(tmp_path, target_class=target_class)
+        elif category == "postures":
+            from inference import run_posture_coach
+            result = run_posture_coach(tmp_path, target_class=target_class)
+        elif category == "hastas":
+            from inference import run_hasta_coach
+            result = run_hasta_coach(tmp_path, target_class=target_class)
+        else:
+            raise HTTPException(status_code=400, detail=f"Invalid category: {category}")
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:

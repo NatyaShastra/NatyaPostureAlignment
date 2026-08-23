@@ -43,15 +43,15 @@ export default function UploadZone({ onFile, disabled }: Props) {
         <circle cx="32" cy="40" r="4" fill="#E8621A" opacity="0.8"/>
       </svg>
 
-      <p className="font-display text-xl text-ivory mb-2">Drop a video here</p>
+      <p className="font-display text-xl text-ivory mb-2">Drop a video or image here</p>
       <p className="font-body text-ink-light text-base" style={{color:'var(--ivory-dark)', opacity:0.7}}>
-        or click to browse — MP4, MOV, AVI · max 100 MB
+        or click to browse — MP4, MOV, JPG, PNG
       </p>
 
       <input
         ref={inputRef}
         type="file"
-        accept="video/mp4,video/quicktime,video/x-msvideo,.mp4,.mov,.avi"
+        accept="video/mp4,video/quicktime,video/x-msvideo,.mp4,.mov,.avi,image/jpeg,image/png,.jpg,.jpeg,.png"
         className="hidden"
         onChange={handleChange}
       />

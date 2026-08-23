@@ -8,12 +8,35 @@ export interface FlaggedJoint {
   deviation_deg: number
 }
 
+export interface JointComparisonRow {
+  joint:         string
+  left_student:  number
+  left_master:   number
+  left_diff:     number
+  left_flagged:  boolean
+  right_student: number
+  right_master:  number
+  right_diff:    number
+  right_flagged: boolean
+}
+
+export interface Top5Anomaly {
+  frame_index:       number
+  video_frame:       number
+  timestamp:         number
+  anomaly_score:     number
+  is_major_breach:   boolean
+  student_image_b64: string | null
+  master_image_b64:  string | null
+  comparison_table:  JointComparisonRow[]
+}
+
 export interface AnalysisResult {
   adavu_class:        string
   confidence:         number
   top_k_predictions:  [string, number][]
   overall_score:      number
-  region_scores:      { legs: number; arms: number; torso: number }
+  region_scores:      { legs: number; arms: number; torso?: number }
   passed:             boolean
   grade:              string
   grade_message:      string
@@ -23,13 +46,16 @@ export interface AnalysisResult {
   coaching_feedback:  string
   feedback_source:    'llm' | 'template'
   overlay_image_b64:  string | null
+  top_5_anomalies?:   Top5Anomaly[]
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://natya-posture-align-model-production.up.railway.app'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
-export async function analyseVideo(file: File): Promise<AnalysisResult> {
+export async function analyseVideo(file: File, category: string, targetClass: string): Promise<AnalysisResult> {
   const form = new FormData()
   form.append('video', file)
+  form.append('category', category)
+  form.append('target_class', targetClass)
 
   const res = await fetch(`${API_URL}/analyse`, {
     method: 'POST',

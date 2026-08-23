@@ -5,7 +5,7 @@ import os
 print('MediaPipe model ready.')
 
 
-import os, re, json, warnings
+import os, re, json, warnings, pickle
 import numpy as np
 import cv2
 import mediapipe as mp
@@ -26,7 +26,7 @@ warnings.filterwarnings('ignore')
 
 DEVICE       = 'cuda' if torch.cuda.is_available() else 'cpu'
 REPO_ID      = 'vibhuti16/bharatnatyam_adavus'
-NUM_FRAMES   = 60          # more frames → better median
+NUM_FRAMES   = 120         # more frames → better median
 NUM_LANDMARKS = 33
 MIN_VISIBILITY = 0.50      # frames with more low-conf joints than this are dropped
 MAX_BAD_JOINT_FRAC = 0.20  # drop frame if >20% joints below MIN_VISIBILITY
@@ -39,24 +39,27 @@ CKPT_PATH      = 'checkpoints/dance_coach_model.pt'
 
 # Angle definitions  (name, joint_a, vertex, joint_c) — MediaPipe indices
 ANGLE_DEFS = [
-    ('left_knee',      23, 25, 27),
-    ('right_knee',     24, 26, 28),
-    ('left_hip',       11, 23, 25),
-    ('right_hip',      12, 24, 26),
-    ('left_elbow',     11, 13, 15),
-    ('right_elbow',    12, 14, 16),
     ('left_shoulder',  13, 11, 23),
     ('right_shoulder', 14, 12, 24),
-    ('spine_lean',     23, 11, 24),
+    ('left_elbow',     11, 13, 15),
+    ('right_elbow',    12, 14, 16),
+    ('left_wrist',     13, 15, 19),
+    ('right_wrist',    14, 16, 20),
+    ('left_hip',       11, 23, 25),
+    ('right_hip',      12, 24, 26),
+    ('left_knee',      23, 25, 27),
+    ('right_knee',     24, 26, 28),
+    ('left_ankle',     25, 27, 31),
+    ('right_ankle',    26, 28, 32),
 ]
 ANGLE_NAMES = [d[0] for d in ANGLE_DEFS]
 NUM_ANGLES  = len(ANGLE_DEFS)
 
 # Feature dimension breakdown:
 #   normalised coords: 33 joints × 2 (x,y only) × 2 stats (mean, std) = 132
-#   angles:            9 angles  × 3 stats (mean, std, velocity)       =  27
-#   symmetry:          4 pairs   × 1 (L-R angle diff)                  =   4
-FEATURE_DIM = 132 + 27 + 4   # = 163
+#   angles:            12 angles × 3 stats (mean, std, velocity)       =  36
+#   symmetry:          6 pairs   × 1 (L-R angle diff)                  =   6
+FEATURE_DIM = 132 + 36 + 6   # = 174
 
 print(f'Device : {DEVICE}')
 print(f'Feature dim : {FEATURE_DIM}')
@@ -122,6 +125,9 @@ for cls, cnt in sorted(class_counts.items(), key=lambda x: -x[1]):
 
 valid_classes       = {cls for cls, cnt in class_counts.items() if cnt >= MIN_VIDEOS}
 video_files_filtered = [f for f in video_files if get_class(f) in valid_classes]
+class_files         = defaultdict(list)
+for f in video_files_filtered:
+    class_files[get_class(f)].append(f)
 
 print(f'\nKept {len(valid_classes)} classes with >= {MIN_VIDEOS} videos')
 print(f'Kept {len(video_files_filtered)} / {len(video_files)} videos')
@@ -202,33 +208,36 @@ def extract_landmarks_from_video(video_path, num_frames=NUM_FRAMES):
         return None, None
 
     indices = np.linspace(0, total - 1, num_frames, dtype=int)
-    raw_seq = []
-
-    for idx in indices:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, int(idx))
+    target_indices = set(indices)
+    max_idx = max(target_indices) if target_indices else -1
+    
+    raw_seq_dict = {}
+    
+    frame_idx = 0
+    while True:
         ret, frame = cap.read()
-        if not ret:
-            continue
+        if not ret or frame_idx > max_idx:
+            break
             
-        frame = pad_to_square(frame)
-        rgb      = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-        result   = mp_pose.detect(mp_image)
+        if frame_idx in target_indices:
+            frame = pad_to_square(frame)
+            rgb      = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            result   = mp_pose.detect(mp_image)
 
-        if not result.pose_landmarks:
-            continue
-
-        lm = result.pose_landmarks[0]
-        arr = np.array([[l.x, l.y, l.visibility] for l in lm])  # (33, 3)
-
-        # Drop frame if too many joints are low-confidence
-        bad_frac = np.mean(arr[:, 2] < MIN_VISIBILITY)
-        if bad_frac > MAX_BAD_JOINT_FRAC:
-            continue
-
-        raw_seq.append(arr)
+            if result.pose_landmarks:
+                lm = result.pose_landmarks[0]
+                arr = np.array([[l.x, l.y, l.visibility] for l in lm])  # (33, 3)
+                bad_frac = np.mean(arr[:, 2] < MIN_VISIBILITY)
+                if bad_frac <= MAX_BAD_JOINT_FRAC:
+                    raw_seq_dict[frame_idx] = arr
+                    
+        frame_idx += 1
 
     cap.release()
+
+    # Reconstruct raw_seq in order
+    raw_seq = [raw_seq_dict[idx] for idx in indices if idx in raw_seq_dict]
 
     if len(raw_seq) < 5:   # too few usable frames
         return None, None
@@ -245,14 +254,16 @@ def extract_landmarks_from_video(video_path, num_frames=NUM_FRAMES):
 # ── Symmetry features ─────────────────────────────────────────────────────
 # Pairs: (left_angle_idx, right_angle_idx)
 SYMMETRY_PAIRS = [
-    (ANGLE_NAMES.index('left_knee'),     ANGLE_NAMES.index('right_knee')),
-    (ANGLE_NAMES.index('left_hip'),      ANGLE_NAMES.index('right_hip')),
-    (ANGLE_NAMES.index('left_elbow'),    ANGLE_NAMES.index('right_elbow')),
     (ANGLE_NAMES.index('left_shoulder'), ANGLE_NAMES.index('right_shoulder')),
+    (ANGLE_NAMES.index('left_elbow'),    ANGLE_NAMES.index('right_elbow')),
+    (ANGLE_NAMES.index('left_wrist'),    ANGLE_NAMES.index('right_wrist')),
+    (ANGLE_NAMES.index('left_hip'),      ANGLE_NAMES.index('right_hip')),
+    (ANGLE_NAMES.index('left_knee'),     ANGLE_NAMES.index('right_knee')),
+    (ANGLE_NAMES.index('left_ankle'),    ANGLE_NAMES.index('right_ankle')),
 ]
 
 def compute_symmetry_features(angles_mean):
-    """angles_mean: (NUM_ANGLES,) — returns (4,) L-R differences"""
+    """angles_mean: (NUM_ANGLES,) — returns (6,) L-R differences"""
     return np.array([
         abs(angles_mean[l] - angles_mean[r]) for l, r in SYMMETRY_PAIRS
     ])
@@ -263,7 +274,7 @@ def build_feature_vector(seq_norm, angles_seq):
     """
     seq_norm   : (T, 33, 3)
     angles_seq : (T, NUM_ANGLES)
-    Returns    : (FEATURE_DIM,) = 132 + 27 + 4
+    Returns    : (FEATURE_DIM,) = 132 + 36 + 6
     """
     # 1. Normalised coordinate stats — x,y only (drop visibility)
     coords = seq_norm[:, :, :2]              # (T, 33, 2)
@@ -271,69 +282,98 @@ def build_feature_vector(seq_norm, angles_seq):
     coord_std  = coords.std(axis=0).flatten()    # 66  → total 132
 
     # 2. Angle stats
-    angle_mean = angles_seq.mean(axis=0)         # 9
-    angle_std  = angles_seq.std(axis=0)          # 9
-    angle_vel  = np.abs(np.diff(angles_seq, axis=0)).mean(axis=0)  # 9 → total 27
+    angle_mean = angles_seq.mean(axis=0)         # 12
+    angle_std  = angles_seq.std(axis=0)          # 12
+    angle_vel  = np.abs(np.diff(angles_seq, axis=0)).mean(axis=0)  # 12 → total 36
 
     # 3. Symmetry features
-    sym = compute_symmetry_features(angle_mean)  # 4
+    sym = compute_symmetry_features(angle_mean)  # 6
 
     return np.concatenate([coord_mean, coord_std, angle_mean, angle_std, angle_vel, sym])
 
 
 print('Pose extraction utilities ready.')
-print(f'Expected feature dim: {66+66+9+9+9+4} (should be {FEATURE_DIM})')
+print(f'Expected feature dim: {66+66+12+12+12+6} (should be {FEATURE_DIM})')
 
 
+cache_valid = False
 if os.path.exists(FEATURES_CACHE):
-    print(f'Cache found → {FEATURES_CACHE}')
-    data        = np.load(FEATURES_CACHE, allow_pickle=True)
-    X           = data['X']
-    y           = data['y']
-    label_names = list(data['label_names'])
-    angle_means = data['angle_means']
-    angle_stds  = data['angle_stds']
-    print(f'Loaded {len(X)} samples, {len(label_names)} classes.')
-else:
-    class_files = defaultdict(list)
-    for f in video_files_filtered:
-        class_files[get_class(f)].append(f)
-    class_files = defaultdict(list)
-    for f in video_files_filtered:
-        class_files[get_class(f)].append(f)
+    try:
+        data = np.load(FEATURES_CACHE, allow_pickle=True)
+        if data['X'].shape[1] == FEATURE_DIM:
+            print(f'Cache found → {FEATURES_CACHE}')
+            X           = data['X']
+            y           = data['y']
+            label_names = list(data['label_names'])
+            angle_means = data['angle_means']
+            angle_stds  = data['angle_stds']
+            print(f'Loaded {len(X)} samples, {len(label_names)} classes.')
+            cache_valid = True
+        else:
+            print(f'Cache dim mismatch ({data["X"].shape[1]} vs {FEATURE_DIM}). Rebuilding...')
+    except Exception as e:
+        print(f'Failed to load cache: {e}')
 
+RAW_CACHE = 'checkpoints/raw_samples.pkl'
+raw_samples = []
+if os.path.exists(RAW_CACHE):
+    print(f'Loading raw sequences from {RAW_CACHE}...')
+    try:
+        with open(RAW_CACHE, 'rb') as f:
+            raw_samples = pickle.load(f)
+        if len(raw_samples) > 0 and raw_samples[0][0].shape[0] != FEATURE_DIM:
+            print('Raw cache dimension mismatch. Rebuilding...')
+            raw_samples = []
+    except Exception as e:
+        print(f'Failed to load raw cache: {e}')
+        raw_samples = []
+
+if not cache_valid:
     features, labels, angle_means_list, angle_stds_list, failed = [], [], [], [], []
 
-    for cls, files in class_files.items():
-        if cls not in valid_classes:
-            continue
-        subset = files[:MAX_PER_CLASS] if MAX_PER_CLASS else files
-        print(f'Processing {cls} ({len(subset)} videos)')
+    if len(raw_samples) == 0:
+        print('Extracting raw video sequences (single pass)...')
+        for cls, files in class_files.items():
+            if cls not in valid_classes:
+                continue
+            subset = files[:MAX_PER_CLASS] if MAX_PER_CLASS else files
+            print(f'Processing {cls} ({len(subset)} videos)')
 
-        for hf_path in tqdm(subset, desc=cls, leave=False):
-            tmp = None
-            try:
-                tmp = hf_hub_download(
-                    repo_id=REPO_ID, filename=hf_path,
-                    repo_type='dataset', local_dir='/tmp/hf_cache'
-                )
-                seq_norm, angles_seq = extract_landmarks_from_video(tmp)
+            for hf_path in tqdm(subset, desc=cls, leave=False):
+                tmp = None
+                try:
+                    tmp = hf_hub_download(
+                        repo_id=REPO_ID, filename=hf_path,
+                        repo_type='dataset', local_dir='/tmp/hf_cache'
+                    )
+                    seq_norm, angles_seq = extract_landmarks_from_video(tmp)
 
-                if seq_norm is None:
+                    if seq_norm is None:
+                        failed.append(hf_path)
+                        continue
+
+                    fv = build_feature_vector(seq_norm, angles_seq)
+                    a_mu = angles_seq.mean(axis=0)
+                    a_sig = angles_seq.std(axis=0)
+
+                    raw_samples.append((fv, a_mu, a_sig, cls, seq_norm, angles_seq, hf_path))
+
+                except Exception as e:
                     failed.append(hf_path)
-                    continue
+                    print(f'  FAILED: {hf_path} — {e}')
+                finally:
+                    if tmp and os.path.exists(tmp):
+                        os.remove(tmp)
 
-                features.append(build_feature_vector(seq_norm, angles_seq))
-                labels.append(cls)
-                angle_means_list.append(angles_seq.mean(axis=0))
-                angle_stds_list.append(angles_seq.std(axis=0))
+        print(f'Saving raw cache to {RAW_CACHE}...')
+        with open(RAW_CACHE, 'wb') as f:
+            pickle.dump(raw_samples, f)
 
-            except Exception as e:
-                failed.append(hf_path)
-                print(f'  FAILED: {hf_path} — {e}')
-            finally:
-                if tmp and os.path.exists(tmp):
-                    os.remove(tmp)
+    for item in raw_samples:
+        features.append(item[0])
+        labels.append(item[3])
+        angle_means_list.append(item[1])
+        angle_stds_list.append(item[2])
 
     X           = np.array(features)
     y           = np.array(labels)
@@ -475,43 +515,7 @@ print(f'\nPer-class counts:')
 for c, n in sorted(class_sample_counts.items(), key=lambda x: -x[1]):
     print(f'  {c:<40s} {n:3d}')
 
-# We need to re-extract raw sequences for augmentation.
-# Strategy: re-download each video once, store (seq_norm, angles_seq)
-# alongside its label, then augment minority classes to reach max_count.
-
-print('\nRe-downloading videos to build augmented dataset...')
-print('(This re-uses /tmp/hf_cache so already-cached files are fast)')
-
-raw_samples = []   # list of (feature_vec, angle_mean, angle_std, label)
-
-for cls, files in class_files.items():
-    if cls not in valid_classes:
-        continue
-    subset = files[:MAX_PER_CLASS] if MAX_PER_CLASS else files
-
-    for hf_path in tqdm(subset, desc=cls, leave=False):
-        tmp = None
-        try:
-            tmp = hf_hub_download(
-                repo_id=REPO_ID, filename=hf_path,
-                repo_type='dataset', local_dir='/tmp/hf_cache'
-            )
-            seq_norm, angles_seq = extract_landmarks_from_video(tmp)
-            if seq_norm is None:
-                continue
-
-            fv    = build_feature_vector(seq_norm, angles_seq)
-            a_mu  = angles_seq.mean(axis=0)
-            a_sig = angles_seq.std(axis=0)
-            raw_samples.append((fv, a_mu, a_sig, cls, seq_norm, angles_seq))
-
-        except Exception as e:
-            print(f'  FAILED: {hf_path} — {e}')
-        finally:
-            if tmp and os.path.exists(tmp):
-                os.remove(tmp)
-
-print(f'Raw samples collected: {len(raw_samples)}')
+print(f'\nRaw samples available for augmentation: {len(raw_samples)}')
 
 # ── Balance by augmenting minority classes ───────────────────────────────
 X_aug, y_aug, am_aug, as_aug = [], [], [], []
@@ -523,7 +527,7 @@ for item in raw_samples:
 for cls in label_names:
     items = class_raw[cls]
     # Always add originals
-    for fv, a_mu, a_sig, _, seq_norm, angles_seq in items:
+    for fv, a_mu, a_sig, _, seq_norm, angles_seq, hf_path in items:
         X_aug.append(fv); y_aug.append(cls)
         am_aug.append(a_mu); as_aug.append(a_sig)
 
@@ -536,7 +540,7 @@ for cls in label_names:
     added = 0
     while added < needed:
         src = pool[added % len(pool)]
-        fv, a_mu, a_sig, _, seq_norm, angles_seq = src
+        fv, a_mu, a_sig, _, seq_norm, angles_seq, hf_path = src
         variants = augment_sample(seq_norm, angles_seq)
         for v_fv, v_amu, v_asig in variants:
             if added >= needed:
@@ -560,24 +564,27 @@ for c in label_names:
 # so the reference reflects real human execution, not synthetic variants.
 
 REGIONS = {
-    'legs':  ['left_knee', 'right_knee', 'left_hip', 'right_hip'],
-    'arms':  ['left_elbow', 'right_elbow', 'left_shoulder', 'right_shoulder'],
-    'torso': ['spine_lean'],
+    'legs':  ['left_knee', 'right_knee', 'left_hip', 'right_hip', 'left_ankle', 'right_ankle'],
+    'arms':  ['left_elbow', 'right_elbow', 'left_shoulder', 'right_shoulder', 'left_wrist', 'right_wrist'],
 }
 
 angle_refs = {}
 for cls in label_names:
-    # Use only original (non-augmented) samples — am_aug[:len(X)] corresponds to originals
-    orig_mask = (y_aug == cls)[:len(X)]   # mask within original portion
-    orig_mus  = am_aug[:len(X)][orig_mask]  # (N_cls, NUM_ANGLES)
-
-    if len(orig_mus) == 0:
+    items = class_raw.get(cls, [])
+    if not items:
         continue
+        
+    orig_mus = np.array([item[1] for item in items])
+    master_angles = items[0][5]
+    master_landmarks = items[0][4]
+    master_hf_path = items[0][6]
 
     angle_refs[cls] = {
         'mean': orig_mus.mean(axis=0),
-        # Floor std at 3° — avoids division by zero on very consistent classes
         'std':  np.maximum(orig_mus.std(axis=0), 3.0),
+        'master_angles': master_angles,
+        'master_landmarks': master_landmarks,
+        'master_hf_path': master_hf_path,
     }
 
 print('Angle reference distributions built:')
