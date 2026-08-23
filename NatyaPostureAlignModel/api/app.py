@@ -79,6 +79,14 @@ def _download_checkpoints() -> None:
         except Exception as e:
             print(f"[startup] WARNING: Could not download from GitHub: {e}")
             print("[startup] Continuing — will fail at inference if files are missing or invalid")
+            
+    # Always ensure master videos are downloaded from Google Drive
+    try:
+        from data.download_master_videos import download_master_videos
+        print("[startup] Checking for master videos in Google Drive...")
+        download_master_videos()
+    except Exception as e:
+        print(f"[startup] WARNING: Could not download master videos: {e}")
 
 
 @asynccontextmanager
