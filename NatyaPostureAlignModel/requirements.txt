@@ -2,10 +2,10 @@
 torch
 torchvision
 scikit-learn
-numpy
+numpy==2.4.6
 
 # Pose estimation
-mediapipe
+mediapipe==0.10.14
 opencv-python-headless
 
 # LLM feedback
