@@ -21,6 +21,7 @@ env/
 *.pth
 checkpoints/*
 !checkpoints/master_landmarks_unnorm.npz
+!checkpoints/master_angles.npz
 !checkpoints/adavu_features.npz
 !checkpoints/dance_coach_model.pt
 

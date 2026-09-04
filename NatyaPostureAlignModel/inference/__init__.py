@@ -118,6 +118,21 @@ def load_model_and_refs(
     else:
         print(f"[startup] WARNING: Master landmarks not found at {master_lm_path}")
 
+    # --- Precomputed Master Angle Trajectories -----------------------------
+    master_angles_path = os.path.join(os.path.dirname(checkpoint_path), "master_angles.npz")
+    if not os.path.exists(master_angles_path):
+        master_angles_path = "checkpoints/master_angles.npz"
+    if os.path.exists(master_angles_path):
+        data = np.load(master_angles_path, allow_pickle=True)
+        from .angles import get_angle_refs
+        angle_refs = get_angle_refs()
+        for cls in data.files:
+            if cls in angle_refs:
+                angle_refs[cls]["high_res_master_angles"] = data[cls]
+        print(f"[startup] Precomputed master angle trajectories loaded ({len(data.files)} classes)")
+    else:
+        print(f"[startup] WARNING: Master angles not found at {master_angles_path}")
+
 
 # ---------------------------------------------------------------------------
 # Main inference pipeline
@@ -204,20 +219,6 @@ def run_coach_v2(
     if "high_res_master_angles" in ref_data:
         master_angles = ref_data["high_res_master_angles"]
     else:
-        vid_filename = CLASS_TO_FILE.get(adavu_class, adavu_class)
-        prod_vid_path = os.path.abspath(f"checkpoints/master_videos/{vid_filename}.mp4")
-        local_vid_path = os.path.abspath(f"/Volumes/Munu/Master Videos/{vid_filename}.mp4")
-        master_vid_path = prod_vid_path if os.path.exists(prod_vid_path) else local_vid_path
-        
-        if os.path.exists(master_vid_path):
-            m_seq = extract_landmarks_from_video(master_vid_path, num_frames=len(angles))
-            if m_seq is not None:
-                from .pose import normalise_landmarks
-                m_seq_norm = normalise_landmarks(m_seq)
-                master_angles = compute_angles_from_sequence(m_seq_norm)
-                ref_data["high_res_master_angles"] = master_angles
-                
-    if master_angles is None:
         master_angles = ref_data.get("master_angles", np.tile(ref_mean, (len(angles), 1)))
 
     master_indices = compute_dtw_alignment(angles, master_angles)
