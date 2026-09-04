@@ -21,14 +21,17 @@ export interface JointComparisonRow {
 }
 
 export interface Top5Anomaly {
-  frame_index:       number
-  video_frame:       number
-  timestamp:         number
-  anomaly_score:     number
-  is_major_breach:   boolean
-  student_image_b64: string | null
-  master_image_b64:  string | null
-  comparison_table:  JointComparisonRow[]
+  frame_index:        number
+  video_frame:        number
+  timestamp:          number
+  anomaly_score:      number
+  is_major_breach:    boolean
+  student_image_b64:  string | null
+  master_image_b64:   string | null
+  master_video_name?: string
+  master_frame_index?: number
+  master_landmarks?:  number[][]
+  comparison_table:   JointComparisonRow[]
 }
 
 export interface AnalysisResult {

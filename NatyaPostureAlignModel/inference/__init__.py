@@ -34,6 +34,7 @@ _le       = None        # sklearn LabelEncoder
 _X_mean:  np.ndarray | None = None
 _X_std:   np.ndarray | None = None
 _device   = "cpu"
+_master_landmarks_unnorm: dict[str, np.ndarray] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -54,8 +55,9 @@ def load_model_and_refs(
     - Builds per-class angle reference distributions from the feature cache
     - Initialises the MediaPipe PoseLandmarker singleton
     - Initialises the Groq client if an API key is provided
+    - Loads pre-extracted unnormalized master pose landmarks
     """
-    global _model, _le, _X_mean, _X_std, _device
+    global _model, _le, _X_mean, _X_std, _device, _master_landmarks_unnorm
 
     # --- Model checkpoint -------------------------------------------------
     if not os.path.exists(checkpoint_path):
@@ -104,6 +106,17 @@ def load_model_and_refs(
         print(f"[startup] Groq client initialised")
     else:
         print(f"[startup] No GROQ_API_KEY — will use template feedback")
+
+    # --- Master Pose Landmarks (Offline) -----------------------------------
+    master_lm_path = os.path.join(os.path.dirname(checkpoint_path), "master_landmarks_unnorm.npz")
+    if not os.path.exists(master_lm_path):
+        master_lm_path = "checkpoints/master_landmarks_unnorm.npz"
+    if os.path.exists(master_lm_path):
+        data = np.load(master_lm_path, allow_pickle=True)
+        _master_landmarks_unnorm = {k: data[k] for k in data.files}
+        print(f"[startup] Master landmarks loaded ({len(_master_landmarks_unnorm)} video keys)")
+    else:
+        print(f"[startup] WARNING: Master landmarks not found at {master_lm_path}")
 
 
 # ---------------------------------------------------------------------------
@@ -266,55 +279,46 @@ def run_coach_v2(
             # Extract RGB frames from STUDENT video in a single pass
             extracted_rgb = extract_frames_rgb(video_path, list(vid_indices_map.values()))
             
-            # Pre-extract MASTER video frames in a single pass to prevent OOM
-            master_vid_path = ""
-            m_extracted_rgb = {}
-            m_indices_map = {}
-            if len(top_5_idx) > 0:
-                vid_filename = CLASS_TO_FILE.get(adavu_class, adavu_class)
-                prod_vid_path = os.path.abspath(f"checkpoints/master_videos/{vid_filename}.mp4")
-                local_vid_path = os.path.abspath(f"/Volumes/Munu/Master Videos/{vid_filename}.mp4")
-                master_vid_path = prod_vid_path if os.path.exists(prod_vid_path) else local_vid_path
-                
-                if os.path.exists(master_vid_path):
-                    import cv2
-                    cap = cv2.VideoCapture(master_vid_path)
-                    m_total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                    cap.release()
-                    
-                    if m_total > 0:
-                        num_master_frames = len(master_angles)
-                        m_indices = np.linspace(0, m_total - 1, num_master_frames, dtype=int)
-                        needed_m_indices = []
-                        for s_idx in top_5_idx:
-                            m_idx = master_indices[s_idx]
-                            if m_idx < len(master_angles):
-                                safe_m_idx = min(int(m_idx), num_master_frames - 1)
-                                actual_m_idx = m_indices[safe_m_idx]
-                                needed_m_indices.append(int(actual_m_idx))
-                                m_indices_map[s_idx] = int(actual_m_idx)
-                        
-                        if needed_m_indices:
-                            from .pose import extract_frames_rgb
-                            m_extracted_rgb = extract_frames_rgb(master_vid_path, needed_m_indices)
-            
-            # 4. Generate overall mid-frame overlay (backwards compat)
-            if mid_vid_idx in extracted_rgb:
-                frame_rgb = extracted_rgb[mid_vid_idx]
-                canvas = draw_skeleton_overlay(
-                    frame_rgb, seq[mid_s_idx], flagged_names, adavu_label=adavu_class
-                )
-                overlay_b64 = overlay_to_base64(canvas)
-            else:
-                aspect_ratio = 1.0
+            # Build Top 5 Anomaly objects for Bunny CDN delivery
+            vid_filename = CLASS_TO_FILE.get(adavu_class, adavu_class)
+            num_master_frames = len(master_angles)
 
-            # 5. Build Top 5 Anomaly objects
             for s_idx in top_5_idx:
                 m_idx     = master_indices[s_idx]
                 score_val = float(anomaly_scores[s_idx])
                 vid_idx   = vid_indices_map[s_idx]
                 ts_sec    = round(vid_idx / fps, 2)
                 
+                # Calculate the exact physical master frame index (actual_m_idx)
+                actual_m_idx = 0
+                m_landmarks = None
+                if m_idx < len(master_angles):
+                    safe_m_idx = min(int(m_idx), num_master_frames - 1)
+                    if vid_filename in _master_landmarks_unnorm:
+                        m_lm_arr = _master_landmarks_unnorm[vid_filename]
+                        m_total = len(m_lm_arr)
+                        if m_total > 0:
+                            m_indices = np.linspace(0, m_total - 1, num_master_frames, dtype=int)
+                            actual_m_idx = int(m_indices[safe_m_idx])
+                        else:
+                            actual_m_idx = safe_m_idx
+
+                        if actual_m_idx < len(m_lm_arr):
+                            m_landmarks = m_lm_arr[actual_m_idx].tolist()
+                    else:
+                        master_vid_path = os.path.abspath(f"checkpoints/master_videos/{vid_filename}.mp4")
+                        if os.path.exists(master_vid_path):
+                            cap = cv2.VideoCapture(master_vid_path)
+                            m_total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                            cap.release()
+                            if m_total > 0:
+                                m_indices = np.linspace(0, m_total - 1, num_master_frames, dtype=int)
+                                actual_m_idx = int(m_indices[safe_m_idx])
+                            else:
+                                actual_m_idx = safe_m_idx
+                        else:
+                            actual_m_idx = safe_m_idx
+
                 # Comparison table
                 comp_table = build_joint_comparison_table(angles[s_idx], master_angles[m_idx], ref_std)
                 
@@ -329,43 +333,18 @@ def run_coach_v2(
                     s_canvas = draw_skeleton_overlay(f_rgb, seq[s_idx], flag_names_frame, ar, adavu_label=f"Frame #{vid_idx}")
                     s_img_b64 = overlay_to_base64(s_canvas)
                     
-                # Master image reference skeleton
-                m_img_b64 = None
-                if m_idx < len(master_angles):
-                    actual_m_idx = m_indices_map.get(s_idx, 0)
-                    m_frame_rgb = m_extracted_rgb.get(actual_m_idx, None)
-
-                    if m_frame_rgb is not None:
-                        from .pose import get_pose_landmarker
-                        
-                        landmarker = get_pose_landmarker()
-                        result = landmarker.process(m_frame_rgb)
-                        
-                        if result.pose_landmarks:
-                            live_m_lm = np.array([[l.x, l.y, l.visibility] for l in result.pose_landmarks.landmark])
-                            m_canvas = draw_skeleton_overlay(
-                                m_frame_rgb, live_m_lm, set(), adavu_label=f"Frame #{int(actual_m_idx)}"
-                            )
-                        else:
-                            m_canvas = draw_reference_skeleton(seq[s_idx], adavu_label=f"Frame #{int(actual_m_idx)}")
-                            
-                        m_img_b64 = overlay_to_base64(m_canvas)
-                    else:
-                        m_canvas = draw_reference_skeleton(seq[s_idx], adavu_label=f"Frame #{int(actual_m_idx)}")
-                        m_img_b64 = overlay_to_base64(m_canvas)
-                else:
-                    m_canvas = draw_reference_skeleton(seq[s_idx], adavu_label=f"Frame #{int(m_idx)}")
-                    m_img_b64 = overlay_to_base64(m_canvas)
-                    
                 top_5_anomalies.append({
-                    "frame_index":       int(s_idx),
-                    "video_frame":       int(vid_idx),
-                    "timestamp":         ts_sec,
-                    "anomaly_score":     score_val,
-                    "is_major_breach":   bool(score_val > 75.0),
-                    "student_image_b64": s_img_b64,
-                    "master_image_b64":  m_img_b64,
-                    "comparison_table":  comp_table,
+                    "frame_index":        int(s_idx),
+                    "video_frame":        int(vid_idx),
+                    "timestamp":          ts_sec,
+                    "anomaly_score":      score_val,
+                    "is_major_breach":    bool(score_val > 75.0),
+                    "student_image_b64":  s_img_b64,
+                    "master_image_b64":   None,
+                    "master_video_name":  vid_filename,
+                    "master_frame_index": int(actual_m_idx),
+                    "master_landmarks":   m_landmarks,
+                    "comparison_table":   comp_table,
                 })
         except Exception as e:
             print(f"  DTW Overlay generation failed: {e}")

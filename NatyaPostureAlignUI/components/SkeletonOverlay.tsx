@@ -8,6 +8,23 @@ interface Props {
   top5?: Top5Anomaly[]
 }
 
+const POSE_CONNECTIONS: [number, number][] = [
+  // Face
+  [0, 1], [1, 2], [2, 3], [3, 7],
+  [0, 4], [4, 5], [5, 6], [6, 8],
+  [9, 10],
+  // Torso
+  [11, 12], [11, 23], [12, 24], [23, 24],
+  // Left Arm
+  [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19],
+  // Right Arm
+  [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20],
+  // Left Leg
+  [23, 25], [25, 27], [27, 29], [27, 31], [29, 31],
+  // Right Leg
+  [24, 26], [26, 28], [28, 30], [28, 32], [30, 32],
+]
+
 export default function SkeletonOverlay({ b64, adavuClass, top5 }: Props) {
   const [selectedTab, setSelectedTab] = useState(0)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
@@ -62,7 +79,13 @@ export default function SkeletonOverlay({ b64, adavuClass, top5 }: Props) {
 
   const current = top5[selectedTab] || top5[0]
   const studentSrc = current.student_image_b64 ? `data:image/jpeg;base64,${current.student_image_b64}` : (b64 ? `data:image/jpeg;base64,${b64}` : null)
-  const masterSrc = current.master_image_b64 ? `data:image/jpeg;base64,${current.master_image_b64}` : null
+  
+  const bunnyCdnUrl = process.env.NEXT_PUBLIC_BUNNY_CDN_URL || 'https://natyamaster.b-cdn.net'
+  const paddedMasterIndex = String(current.master_frame_index ?? 0).padStart(3, '0')
+  const masterVideoFolder = current.master_video_name ?? adavuClass
+  const masterSrc = current.master_frame_index !== undefined && current.master_video_name
+    ? `${bunnyCdnUrl}/${masterVideoFolder}/frame_${paddedMasterIndex}.jpg`
+    : (current.master_image_b64 ? `data:image/jpeg;base64,${current.master_image_b64}` : null)
 
   return (
     <>
@@ -133,8 +156,50 @@ export default function SkeletonOverlay({ b64, adavuClass, top5 }: Props) {
                     src={masterSrc}
                     alt="Master Reference"
                     className="w-full h-full object-contain cursor-zoom-in transition-transform duration-300 group-hover:scale-[1.02]"
-                    onClick={() => { setLightboxSrc(masterSrc); setLightboxTitle(`Master Reference (Frame #${current.video_frame})`) }}
+                    onClick={() => { setLightboxSrc(masterSrc); setLightboxTitle('Master Reference (Gold Standard)') }}
                   />
+                  {current.master_landmarks && current.master_landmarks.length > 0 && (
+                    <svg
+                      className="absolute inset-0 w-full h-full pointer-events-none"
+                      viewBox="0 0 100 100"
+                      preserveAspectRatio="xMidYMid meet"
+                    >
+                      {POSE_CONNECTIONS.map(([i, j], idx) => {
+                        const pt1 = current.master_landmarks![i]
+                        const pt2 = current.master_landmarks![j]
+                        if (!pt1 || !pt2 || (pt1[2] !== undefined && pt1[2] < 0.2) || (pt2[2] !== undefined && pt2[2] < 0.2)) {
+                          return null
+                        }
+                        return (
+                          <line
+                            key={idx}
+                            x1={pt1[0] * 100}
+                            y1={pt1[1] * 100}
+                            x2={pt2[0] * 100}
+                            y2={pt2[1] * 100}
+                            stroke="#8BC34A"
+                            strokeWidth="1.2"
+                            strokeLinecap="round"
+                            opacity="0.9"
+                          />
+                        )
+                      })}
+                      {current.master_landmarks.map((lm, idx) => {
+                        if (!lm || (lm[2] !== undefined && lm[2] < 0.2)) return null
+                        return (
+                          <circle
+                            key={idx}
+                            cx={lm[0] * 100}
+                            cy={lm[1] * 100}
+                            r="1"
+                            fill="#8BC34A"
+                            stroke="#FFFFFF"
+                            strokeWidth="0.3"
+                          />
+                        )
+                      })}
+                    </svg>
+                  )}
                   <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-sm px-2.5 py-1 rounded text-[11px] text-ivory/80 pointer-events-none">
                     Click to enlarge ↗
                   </div>

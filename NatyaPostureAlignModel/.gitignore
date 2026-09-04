@@ -19,7 +19,10 @@ env/
 *.task
 *.pt
 *.pth
-checkpoints/
+checkpoints/*
+!checkpoints/master_landmarks_unnorm.npz
+!checkpoints/adavu_features.npz
+!checkpoints/dance_coach_model.pt
 
 # Operating System Files
 Thumbs.db

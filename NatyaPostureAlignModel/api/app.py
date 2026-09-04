@@ -91,7 +91,7 @@ async def lifespan(app: FastAPI):
         hastas_path="checkpoints/hastas_model.pt",
         groq_api_key=os.environ.get("GROQ_API_KEY"),
     )
-    print("[startup] Dance Coach ready ✓")
+    print("[startup] Dance Coach ready [OK]")
     yield
     # Teardown (nothing to clean up)
 
