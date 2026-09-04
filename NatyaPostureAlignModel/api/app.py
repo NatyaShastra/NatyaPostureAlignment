@@ -65,7 +65,7 @@ def _download_checkpoints() -> None:
         print("[startup] Downloading model artefacts from GitHub (LFS pointers detected)...")
         try:
             # Using the direct raw GitHub links to fetch the actual LFS binaries
-            base_url = "https://github.com/NatyaShastra/NatyaPostureAlignment/raw/feature/upgrades/NatyaPostureAlignModel/checkpoints/"
+            base_url = "https://github.com/NatyaShastra/NatyaPostureAlignment/raw/main/NatyaPostureAlignModel/checkpoints/"
             
             if needs_download(CHECKPOINT_PATH):
                 print(f"[startup] Downloading dance_coach_model.pt...")
